@@ -1,0 +1,85 @@
+/* 学习积分扣分详情表样式 */
+
+/* 表格斑马纹效果 */
+.table-row-light {
+  background-color: #fafafa;
+}
+
+.table-row-dark {
+  background-color: #ffffff;
+}
+
+.table-row-light:hover,
+.table-row-dark:hover {
+  background-color: #e6f7ff !important;
+}
+
+/* 扣分类型标签样式 */
+.deduction-type-tag {
+  font-weight: 500;
+  border-radius: 4px;
+  padding: 2px 8px;
+}
+
+/* 扣分分值标签样式 */
+.deduction-score-tag {
+  font-weight: 600;
+  border-radius: 4px;
+  padding: 2px 8px;
+}
+
+/* 扣分原因文本样式 */
+.deduction-reason {
+  color: #666;
+  font-size: 13px;
+  line-height: 1.4;
+  max-width: 200px;
+  word-wrap: break-word;
+}
+
+/* 时间显示样式 */
+.deduction-time {
+  color: #999;
+  font-size: 12px;
+}
+
+/* 录入人样式 */
+.deduction-recorder {
+  color: #666;
+  font-size: 13px;
+}
+
+/* 表格容器样式 */
+.learning-score-table {
+  margin-top: 16px;
+}
+
+/* 统计卡片样式优化 */
+.ant-statistic-title {
+  font-size: 14px;
+  color: #666;
+}
+
+.ant-statistic-content {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+/* 查询表单样式 */
+.query-form {
+  background: #f8f9fa;
+  padding: 16px;
+  border-radius: 6px;
+  margin-bottom: 16px;
+}
+
+/* 响应式优化 */
+@media (max-width: 768px) {
+  .deduction-reason {
+    max-width: 150px;
+  }
+  
+  .ant-statistic-content {
+    font-size: 16px;
+  }
+}
