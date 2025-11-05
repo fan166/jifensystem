@@ -38,23 +38,34 @@ const Dashboard: React.FC = () => {
   const loadDashboardData = async () => {
     if (!user?.id) return;
     
+    // 网络不可达时直接跳过加载，避免报错干扰UI
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      console.warn('网络不可用，跳过仪表板数据加载');
+      return;
+    }
+
     setLoading(true);
     try {
       const currentPeriod = new Date().toISOString().slice(0, 7);
-      const [stats, rankingData, userScores] = await Promise.all([
+
+      const results = await Promise.allSettled([
         scoreAPI.getUserScoreStats(user.id, currentPeriod),
         scoreAPI.getScoreRanking(currentPeriod),
         scoreAPI.getScores({ userId: user.id })
       ]);
-      
+
+      const stats = results[0].status === 'fulfilled' ? results[0].value : { totalScore: 0, basicDuty: 0, workPerformance: 0, keyWork: 0, bonus: 0 };
+      const rankingData = results[1].status === 'fulfilled' ? results[1].value : [];
+      const userScores = results[2].status === 'fulfilled' ? results[2].value : [];
+
       setScoreStats(stats);
-      
+
       // 找到当前用户的排名
-      const userRankIndex = rankingData.findIndex(item => item.userId === user.id);
+      const userRankIndex = rankingData.findIndex((item: any) => item.userId === user.id);
       setUserRank(userRankIndex >= 0 ? userRankIndex + 1 : 0);
-      
+
       // 生成积分历史趋势数据（最近6个月）
-      const last6Months = [];
+      const last6Months: any[] = [];
       for (let i = 5; i >= 0; i--) {
         const date = new Date();
         date.setMonth(date.getMonth() - i);
@@ -173,96 +184,8 @@ const Dashboard: React.FC = () => {
           </Col>
         </Row>
 
-        {/* 数据统计区域 */}
-        <Row gutter={[16, 16]} className="mb-6">
-          {/* 个人积分趋势 */}
-          <Col xs={24} lg={12}>
-            <Card title="积分趋势">
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={scoreHistory}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" />
-                    <YAxis />
-                    <Tooltip />
-                    <Line type="monotone" dataKey="score" stroke="#3b82f6" strokeWidth={2} />
-                    <Line type="monotone" dataKey="basicDuty" stroke="#10b981" strokeWidth={1} />
-                    <Line type="monotone" dataKey="workPerformance" stroke="#f59e0b" strokeWidth={1} />
-                    <Line type="monotone" dataKey="keyWork" stroke="#ef4444" strokeWidth={1} />
-                    <Line type="monotone" dataKey="bonus" stroke="#8b5cf6" strokeWidth={1} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </Card>
-          </Col>
-          
-          {/* 月度进度 */}
-          <Col xs={24} lg={12}>
-            <Card title="本月积分进度">
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600">目标积分</span>
-                  <span className="font-bold">{monthlyProgress.target}分</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600">当前积分</span>
-                  <span className="font-bold text-blue-600">{monthlyProgress.current}分</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-3">
-                  <div 
-                    className="bg-blue-600 h-3 rounded-full transition-all duration-300" 
-                    style={{ width: `${monthlyProgress.percentage}%` }}
-                  ></div>
-                </div>
-                <div className="text-center text-sm text-gray-500">
-                  完成度: {monthlyProgress.percentage.toFixed(1)}%
-                </div>
-              </div>
-            </Card>
-          </Col>
-        </Row>
-        
-        <Row gutter={[16, 16]} className="mb-6">
-           {/* 最近活动 */}
-           <Col xs={24}>
-             <Card title="我的积分记录" extra={<a onClick={() => navigate('/scores')}>查看全部</a>}>
-               <List
-                 dataSource={recentActivities}
-                 renderItem={(item) => (
-                   <List.Item>
-                     <List.Item.Meta
-                       avatar={
-                         <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold ${
-                           item.score > 0 ? 'bg-green-500' : 'bg-red-500'
-                         }`}>
-                           {item.score > 0 ? '+' : '-'}
-                         </div>
-                       }
-                       title={
-                         <div className="flex items-center justify-between">
-                           <span>{item.scoreType}</span>
-                           <Badge 
-                             count={item.score > 0 ? `+${item.score}` : item.score}
-                             style={{ backgroundColor: item.score > 0 ? '#52c41a' : '#ff4d4f' }}
-                           />
-                         </div>
-                       }
-                       description={
-                         <div>
-                           <div className="text-gray-600">{item.reason}</div>
-                           <div className="flex items-center justify-between mt-1">
-                             <span className="text-xs text-blue-500">{item.category}</span>
-                             <span className="text-xs text-gray-400">{item.time}</span>
-                           </div>
-                         </div>
-                       }
-                     />
-                   </List.Item>
-                 )}
-               />
-             </Card>
-           </Col>
-         </Row>
+
+
 
 
       </Spin>

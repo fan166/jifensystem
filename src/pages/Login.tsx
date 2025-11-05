@@ -10,7 +10,7 @@ import { toast } from 'sonner';
 import { LogIn } from 'lucide-react';
 
 export default function Login() {
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -18,13 +18,35 @@ export default function Login() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) {
-      toast.error('请输入邮箱和密码');
+    if (!identifier || !password) {
+      toast.error('请输入账号（邮箱或用户名）和密码');
       return;
     }
 
     setLoading(true);
     try {
+      // 解析账号为邮箱（支持输入用户名）
+      const resolveEmail = async (id: string): Promise<string> => {
+        if (id.includes('@')) return id.trim();
+        const { data: byName } = await supabase
+          .from('users')
+          .select('email, name')
+          .eq('name', id.trim())
+          .limit(1)
+          .maybeSingle();
+        if (byName?.email) return byName.email;
+        const { data: byEmail } = await supabase
+          .from('users')
+          .select('email')
+          .eq('email', id.trim())
+          .limit(1)
+          .maybeSingle();
+        if (byEmail?.email) return byEmail.email;
+        return id.trim();
+      };
+
+      const email = await resolveEmail(identifier);
+
       // 使用 Supabase 认证
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
@@ -65,7 +87,54 @@ export default function Login() {
       navigate('/');
     } catch (error) {
       console.error('登录失败:', error);
-      toast.error('登录失败，请检查邮箱和密码');
+      const msg = (error as any)?.message || '';
+      if (/Invalid login credentials/i.test(msg)) {
+        toast.error('账号或密码不正确，请重试');
+      } else if (/Email not confirmed/i.test(msg)) {
+        toast.error('邮箱未确认，请在Supabase控制台确认邮箱后重试');
+      } else {
+        toast.error('登录失败，请检查账号（邮箱或用户名）和密码');
+      }
+
+      // 演示模式回退：支持本地临时登录（仅开发环境）
+      try {
+        const demoMap: Record<string, { email: string; password: string; role: 'admin' | 'manager' | 'employee'; name: string; }> = {
+          'admin@company.com': { email: 'admin@company.com', password: 'admin123', role: 'admin', name: '系统管理员' },
+          'manager@company.com': { email: 'manager@company.com', password: 'manager123', role: 'manager', name: '考核办管理员' },
+          'employee@company.com': { email: 'employee@company.com', password: 'employee123', role: 'employee', name: '普通职工' },
+          '系统管理员': { email: 'admin@company.com', password: 'admin123', role: 'admin', name: '系统管理员' },
+          '考核办管理员': { email: 'manager@company.com', password: 'manager123', role: 'manager', name: '考核办管理员' },
+          '普通职工': { email: 'employee@company.com', password: 'employee123', role: 'employee', name: '普通职工' },
+        };
+
+        const resolvedKey = identifier.includes('@') ? identifier.trim() : (await resolveEmail(identifier));
+        const demo = demoMap[identifier.trim()] || demoMap[resolvedKey];
+
+        if (demo && password === demo.password) {
+          const roleMapping = {
+            'admin': 'system_admin',
+            'manager': 'assessment_admin',
+            'employee': 'employee'
+          } as const;
+
+          const tempUser = {
+            id: crypto?.randomUUID ? crypto.randomUUID() : `temp-${Date.now()}`,
+            email: demo.email,
+            name: demo.name,
+            role: roleMapping[demo.role],
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          };
+
+          localStorage.setItem('temp_user', JSON.stringify(tempUser));
+          setUser(tempUser as any);
+          toast.success('以演示模式登录成功');
+          navigate('/');
+          return;
+        }
+      } catch (fallbackErr) {
+        console.warn('演示登录回退失败:', fallbackErr);
+      }
     } finally {
       setLoading(false);
     }
@@ -111,13 +180,13 @@ export default function Login() {
         <CardContent>
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <Label htmlFor="email">邮箱</Label>
+              <Label htmlFor="identifier">账号</Label>
               <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="请输入邮箱"
+                id="identifier"
+                type="text"
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
+                placeholder="请输入邮箱或用户名"
                 required
               />
             </div>

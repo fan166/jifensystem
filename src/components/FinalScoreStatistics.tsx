@@ -276,37 +276,21 @@ export const FinalScoreStatistics: React.FC = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <h3 className="text-lg font-semibold">
-            {userRole === 'employee' ? '我的最终积分' : '最终积分统计'}
-          </h3>
           <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
             <SelectTrigger className="w-32">
-              <SelectValue />
+              <SelectValue placeholder="选择年份" />
             </SelectTrigger>
             <SelectContent>
-              {PERIOD_OPTIONS.map(option => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
+              {Array.from({ length: new Date().getFullYear() - 2025 + 1 }, (_, i) => {
+                const y = String(2025 + i);
+                return (
+                  <SelectItem key={y} value={y}>
+                    {y}年
+                  </SelectItem>
+                );
+              })}
             </SelectContent>
           </Select>
-          {/* 只有管理员才能选择部门 */}
-          {(userRole === 'system_admin' || userRole === 'assessment_admin') && (
-            <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
-              <SelectTrigger className="w-40">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">全部部门</SelectItem>
-                {departments.map(dept => (
-                <SelectItem key={dept} value={dept}>
-                  {dept}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          )}
         </div>
         <div className="flex gap-2">
           {/* 只有管理员才能看到操作按钮 */}

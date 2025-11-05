@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { Badge, Dropdown, List, Button, Empty, Typography, Space, Tag } from 'antd';
+import React, { useEffect } from 'react';
+import { Dropdown, List, Button, Empty, Typography, Space, Tag } from 'antd';
 import { BellOutlined, CheckOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../stores/authStore';
+import { useNotificationsStore } from '../stores/notificationsStore';
 
 const { Text } = Typography;
 
@@ -17,74 +18,37 @@ interface Notification {
 
 const NotificationCenter: React.FC = () => {
   const { user } = useAuthStore();
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [loading, setLoading] = useState(false);
+  const notificationsStore = useNotificationsStore();
+  const notifications = notificationsStore.items.map(item => ({
+    id: item.id,
+    title: item.title,
+    content: item.content,
+    type: item.type,
+    read: item.is_read,
+    createdAt: item.created_at,
+    actionUrl: undefined
+  }));
+  const loading = notificationsStore.loading;
 
-  // 模拟获取通知数据
+  // 获取与订阅公告
   useEffect(() => {
     if (user) {
-      loadNotifications();
+      notificationsStore.fetch();
+      notificationsStore.subscribe();
     }
   }, [user]);
 
-  const loadNotifications = async () => {
-    setLoading(true);
-    try {
-      // 模拟API调用
-      const mockNotifications: Notification[] = [
-        {
-          id: '1',
-          title: '积分更新通知',
-          content: '您的基本职责积分已更新，新增5分',
-          type: 'success',
-          read: false,
-          createdAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(), // 30分钟前
-          actionUrl: '/dashboard'
-        },
-        {
-          id: '2',
-          title: '任务提醒',
-          content: '您有一个重点工作任务即将到期，请及时处理',
-          type: 'warning',
-          read: false,
-          createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(), // 2小时前
-          actionUrl: '/key-work'
-        },
-        {
-          id: '3',
-          title: '系统公告',
-          content: '积分管理系统将于本周末进行维护升级',
-          type: 'info',
-          read: true,
-          createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(), // 1天前
-        }
-      ];
-      setNotifications(mockNotifications);
-    } catch (error) {
-      console.error('加载通知失败:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const markAsRead = (id: string) => {
-    setNotifications(prev => 
-      prev.map(notification => 
-        notification.id === id 
-          ? { ...notification, read: true }
-          : notification
-      )
-    );
+    notificationsStore.markRead(id);
   };
 
   const markAllAsRead = () => {
-    setNotifications(prev => 
-      prev.map(notification => ({ ...notification, read: true }))
-    );
+    notificationsStore.markAllRead();
   };
 
   const deleteNotification = (id: string) => {
-    setNotifications(prev => prev.filter(notification => notification.id !== id));
+    // 删除仅管理员可见，员工不显示按钮（在渲染中控制）。这里调用store删除。
+    notificationsStore.remove(id);
   };
 
   const getTypeColor = (type: string) => {
@@ -115,7 +79,7 @@ const NotificationCenter: React.FC = () => {
     }
   };
 
-  const unreadCount = notifications.filter(n => !n.read).length;
+  const unreadCount = notificationsStore.unreadCount;
 
   const notificationList = (
     <div className="w-80 max-h-96 overflow-y-auto bg-white rounded-lg shadow-lg border">
@@ -141,7 +105,7 @@ const NotificationCenter: React.FC = () => {
           />
         </div>
       ) : (
-        <List
+            <List
           dataSource={notifications}
           renderItem={(item) => (
             <List.Item
@@ -215,13 +179,11 @@ const NotificationCenter: React.FC = () => {
       }}
       getPopupContainer={(triggerNode) => triggerNode.parentElement || document.body}
     >
-      <Badge count={unreadCount} size="small">
-        <Button 
-          type="text" 
-          icon={<BellOutlined />} 
-          className="flex items-center justify-center"
-        />
-      </Badge>
+      <Button 
+        type="text" 
+        icon={<BellOutlined />} 
+        className="flex items-center justify-center"
+      />
     </Dropdown>
   );
 };

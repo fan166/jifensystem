@@ -123,7 +123,7 @@ const BasicDutyStats: React.FC<BasicDutyStatsProps> = ({ currentUserId }) => {
         userStatsMap.set(user.id, {
           userId: user.id,
           userName: user.name,
-          departmentName: user.department_id || '未分配',
+          departmentName: user.department?.name || '未分配',
           attendanceScore: 0,
           learningScore: 0,
           disciplineScore: 0,
@@ -478,47 +478,6 @@ const BasicDutyStats: React.FC<BasicDutyStatsProps> = ({ currentUserId }) => {
 
   return (
     <div>
-      {/* 筛选条件 */}
-      <Card className="mb-4" size="small">
-        <Row gutter={16} align="middle">
-          <Col span={currentUserId ? 12 : 8}>
-            <div className="flex items-center">
-              <span className="mr-2">统计周期：</span>
-              <RangePicker
-                value={dateRange}
-                onChange={setDateRange}
-                className="flex-1"
-              />
-            </div>
-          </Col>
-          {!currentUserId && (
-            <Col span={8}>
-              <div className="flex items-center">
-                <span className="mr-2">部门筛选：</span>
-                <Select
-                  placeholder="选择部门"
-                  allowClear
-                  value={selectedDepartment}
-                  onChange={setSelectedDepartment}
-                  className="flex-1"
-                >
-                  {departments.map(dept => (
-                    <Option key={dept} value={dept}>{dept}</Option>
-                  ))}
-                </Select>
-              </div>
-            </Col>
-          )}
-          <Col span={currentUserId ? 12 : 8}>
-            <div className="flex justify-end">
-              <Button type="primary" icon={<DownloadOutlined />} onClick={handleExportStats}>
-                导出统计
-              </Button>
-            </div>
-          </Col>
-        </Row>
-      </Card>
-
       {/* 总体统计卡片 */}
       <Row gutter={16} className="mb-4">
         <Col span={6}>
@@ -584,44 +543,7 @@ const BasicDutyStats: React.FC<BasicDutyStatsProps> = ({ currentUserId }) => {
 
         return (
           <>
-            {/* 图表分析和智能建议 */}
-            <Row gutter={16} className="mb-4">
-              <Col span={16}>
-                <Card title="积分分析图表" className="h-96">
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={chartData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="name" />
-                      <YAxis />
-                      <RechartsTooltip />
-                      <Legend />
-                      <Bar dataKey="value" fill="#1890ff" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </Card>
-              </Col>
-              <Col span={8}>
-                <Card title={<><BulbOutlined /> 智能建议</>} className="h-96">
-                  <div className="space-y-3">
-                    {suggestions.map((suggestion, index) => (
-                      <div key={index} className={`p-3 rounded-lg ${
-                        suggestion.type === 'positive' ? 'bg-green-50 border-l-4 border-green-400' :
-                        suggestion.type === 'warning' ? 'bg-yellow-50 border-l-4 border-yellow-400' :
-                        'bg-blue-50 border-l-4 border-blue-400'
-                      }`}>
-                        <p className={`text-sm ${
-                          suggestion.type === 'positive' ? 'text-green-700' :
-                          suggestion.type === 'warning' ? 'text-yellow-700' :
-                          'text-blue-700'
-                        }`}>
-                          {suggestion.text}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </Card>
-              </Col>
-            </Row>
+
           </>
         );
       })()}

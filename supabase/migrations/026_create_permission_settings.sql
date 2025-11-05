@@ -44,8 +44,8 @@ GRANT SELECT ON permission_settings TO anon;
 
 -- 插入初始权限设置数据
 INSERT INTO permission_settings (setting_key, is_enabled, description) VALUES
-('daily_evaluation_visible', true, '普通用户日常实绩评价界面可见性'),
-('annual_evaluation_visible', true, '普通用户年终集体测评界面可见性'),
+('daily_evaluation_visible', false, '普通用户日常实绩评价界面可见性'),
+('annual_evaluation_visible', false, '普通用户年终集体测评界面可见性'),
 ('evaluation_result_visible', true, '普通用户评价结果查看权限'),
 ('personal_score_visible', true, '普通用户个人积分查看权限'),
 ('statistics_visible', false, '普通用户积分统计分析界面可见性');

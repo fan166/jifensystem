@@ -19,6 +19,7 @@ interface ScoreRecord extends Score {
 interface AttendanceScoreProps {
   readonly?: boolean;
   currentUserId?: string; // 当前用户ID，用于权限控制
+  addTrigger?: number; // 父级触发添加动作
 }
 
 // 考勤扣分标准
@@ -31,17 +32,32 @@ const ATTENDANCE_STANDARDS = [
   { type: '累计或连续旷工', score: -10, description: '一年内累计旷工超过7天的，或连续旷工超过3天的扣10分' }
 ];
 
-const AttendanceScore: React.FC<AttendanceScoreProps> = ({ readonly = false, currentUserId }) => {
+// 学习管理扣分标准（示例）
+const LEARNING_DEDUCTION_STANDARDS = [
+  { type: '未参加规定培训', score: -0.5, description: '未按要求参加培训每次扣0.5分' },
+  { type: '学习任务未完成', score: -1, description: '未完成必修学习任务每次扣1分' },
+  { type: '考试不及格', score: -2, description: '学习考试不合格每次扣2分' }
+];
+
+// 纪律管理扣分标准（示例）
+const DISCIPLINE_DEDUCTION_STANDARDS = [
+  { type: '违反工作纪律', score: -1, description: '违反工作纪律每次扣1分' },
+  { type: '不遵守规章制度', score: -2, description: '未遵守制度每次扣2分' },
+  { type: '影响工作秩序', score: -3, description: '影响工作秩序每次扣3分' }
+];
+
+const AttendanceScore: React.FC<AttendanceScoreProps> = ({ readonly = false, currentUserId, addTrigger }) => {
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRecord, setEditingRecord] = useState<ScoreRecord | null>(null);
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [scoreRecords, setScoreRecords] = useState<ScoreRecord[]>([]);
-  const [scoreTypes, setScoreTypes] = useState<ScoreType[]>([]);
+  const [allScoreTypes, setAllScoreTypes] = useState<ScoreType[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null);
   const [selectedUser, setSelectedUser] = useState<string | undefined>(undefined);
   const { user: currentUser } = useAuthStore();
+  const [selectedScoreTypeId, setSelectedScoreTypeId] = useState<string | undefined>(undefined);
 
   // 统计数据
   const [statistics, setStatistics] = useState({
@@ -70,6 +86,15 @@ const AttendanceScore: React.FC<AttendanceScoreProps> = ({ readonly = false, cur
     loadData();
   }, [dateRange, selectedUser]);
 
+  // 监听父组件触发添加动作
+  useEffect(() => {
+    if (!readonly && addTrigger && addTrigger > 0) {
+      setEditingRecord(null);
+      form.resetFields();
+      setModalVisible(true);
+    }
+  }, [addTrigger, readonly]);
+
   const loadData = async () => {
     setLoading(true);
     try {
@@ -77,12 +102,8 @@ const AttendanceScore: React.FC<AttendanceScoreProps> = ({ readonly = false, cur
         scoreTypeAPI.getScoreTypesByCategory('basic_duty'),
         userAPI.getUsers()
       ]);
-      
-      // 筛选考勤相关的积分类型
-      const attendanceTypes = scoreTypesData.filter(type => 
-        type.name.includes('考勤') || type.name.includes('出勤')
-      );
-      setScoreTypes(attendanceTypes);
+      // 存储全部基本职责积分类型，后续按添加类型动态过滤
+      setAllScoreTypes(scoreTypesData);
       setUsers(usersData);
 
       // 构建查询条件
@@ -230,8 +251,7 @@ const AttendanceScore: React.FC<AttendanceScoreProps> = ({ readonly = false, cur
       userId: record.user_id,
       scoreTypeId: record.score_type_id,
       score: Math.abs(record.score), // 显示正数，用户输入时更直观
-      reason: record.reason,
-      attendanceDate: record.created_at ? dayjs(record.created_at) : dayjs()
+      reason: record.reason
     });
     setModalVisible(true);
   };
@@ -261,7 +281,7 @@ const AttendanceScore: React.FC<AttendanceScoreProps> = ({ readonly = false, cur
         score: -Math.abs(values.score), // 考勤扣分，存储为负数
         reason: values.reason,
         recorder_id: currentUser?.id,
-        period: values.attendanceDate ? values.attendanceDate.format('YYYY-MM') : dayjs().format('YYYY-MM')
+        period: dayjs().format('YYYY-MM')
       };
 
       if (editingRecord) {
@@ -368,95 +388,14 @@ const AttendanceScore: React.FC<AttendanceScoreProps> = ({ readonly = false, cur
         </Col>
       </Row>
 
-      {/* 筛选和排序控制 */}
-      <Card size="small" style={{ marginBottom: 16 }}>
-        <Row gutter={16} align="middle">
-          {!currentUserId && (
-            <Col span={6}>
-              <div>
-                <span style={{ marginRight: 8 }}>人员筛选：</span>
-                <Select
-                  placeholder="选择人员"
-                  allowClear
-                  value={selectedUser}
-                  onChange={setSelectedUser}
-                  showSearch
-                  optionFilterProp="children"
-                  style={{ width: '100%' }}
-                >
-                  {users.map(user => (
-                    <Option key={user.id} value={user.id}>{user.name}</Option>
-                  ))}
-                </Select>
-              </div>
-            </Col>
-          )}
-          <Col span={currentUserId ? 6 : 5}>
-            <div>
-              <span style={{ marginRight: 8 }}>时间范围：</span>
-              <RangePicker
-                value={dateRange}
-                onChange={setDateRange}
-                style={{ width: '100%' }}
-              />
-            </div>
-          </Col>
-          <Col span={currentUserId ? 4 : 4}>
-            <div>
-              <span style={{ marginRight: 8 }}>类型筛选：</span>
-              <Select
-                value={filterType}
-                onChange={setFilterType}
-                style={{ width: '100%' }}
-              >
-                <Option value="all">全部类型</Option>
-                {ATTENDANCE_STANDARDS.map(standard => (
-                  <Option key={standard.type} value={standard.type}>
-                    {standard.type}
-                  </Option>
-                ))}
-              </Select>
-            </div>
-          </Col>
-          <Col span={currentUserId ? 4 : 3}>
-            <div>
-              <span style={{ marginRight: 8 }}>排序：</span>
-              <Select
-                value={`${sortBy}-${sortOrder}`}
-                onChange={(value) => {
-                  const [by, order] = value.split('-');
-                  setSortBy(by as 'date' | 'score' | 'type');
-                  setSortOrder(order as 'asc' | 'desc');
-                }}
-                style={{ width: '100%' }}
-              >
-                <Option value="date-desc">时间↓</Option>
-                <Option value="date-asc">时间↑</Option>
-                <Option value="score-desc">扣分↓</Option>
-                <Option value="score-asc">扣分↑</Option>
-                <Option value="type-asc">类型A-Z</Option>
-              </Select>
-            </div>
-          </Col>
-          <Col span={currentUserId ? 10 : 6}>
-            <div style={{ textAlign: 'right' }}>
-              {!readonly && (
-                <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
-                  添加考勤扣分
-                </Button>
-              )}
-            </div>
-          </Col>
-        </Row>
-      </Card>
+
 
       {/* 分类扣分详情卡片 */}
       <Card 
         title={
           <Space>
             <InfoCircleOutlined />
-            <span>考勤扣分详情分析</span>
-            <Badge count={Object.keys(categoryStats).length} showZero color="#108ee9" />
+            <span>考勤扣分标准</span>
           </Space>
         }
         size="small"
@@ -582,7 +521,6 @@ const AttendanceScore: React.FC<AttendanceScoreProps> = ({ readonly = false, cur
           <Space>
             <TableOutlined />
             <span>扣分记录详情</span>
-            <Badge count={filteredRecords.length} showZero color="#ff4d4f" />
           </Space>
         }
         size="small"
@@ -757,7 +695,7 @@ const AttendanceScore: React.FC<AttendanceScoreProps> = ({ readonly = false, cur
 
       {/* 添加/编辑模态框 */}
       <Modal
-        title={editingRecord ? '编辑考勤扣分' : '添加考勤扣分'}
+        title={editingRecord ? '编辑考勤扣分' : '添加基本职责积分'}
         open={modalVisible}
         onCancel={() => setModalVisible(false)}
         footer={null}
@@ -785,11 +723,11 @@ const AttendanceScore: React.FC<AttendanceScoreProps> = ({ readonly = false, cur
             <Col span={12}>
               <Form.Item
                 name="scoreTypeId"
-                label="考勤类型"
-                rules={[{ required: true, message: '请选择考勤类型' }]}
+                label="积分类型"
+                rules={[{ required: true, message: '请选择积分类型' }]}
               >
-                <Select placeholder="请选择考勤类型">
-                  {scoreTypes.map(type => (
+                <Select placeholder="请选择积分类型" onChange={(val) => setSelectedScoreTypeId(val)}>
+                  {allScoreTypes.map(type => (
                     <Option key={type.id} value={type.id}>{type.name}</Option>
                   ))}
                 </Select>
@@ -814,15 +752,7 @@ const AttendanceScore: React.FC<AttendanceScoreProps> = ({ readonly = false, cur
                 />
               </Form.Item>
             </Col>
-            <Col span={12}>
-              <Form.Item
-                name="attendanceDate"
-                label="考勤日期"
-                rules={[{ required: true, message: '请选择考勤日期' }]}
-              >
-                <DatePicker />
-              </Form.Item>
-            </Col>
+            {/* 已移除考勤日期字段 */}
           </Row>
 
           <Form.Item
@@ -836,18 +766,25 @@ const AttendanceScore: React.FC<AttendanceScoreProps> = ({ readonly = false, cur
             />
           </Form.Item>
 
-          {/* 快速选择扣分标准 */}
+          {/* 快速选择扣分标准（随所选积分类型联动） */}
           <Form.Item label="快速选择">
             <div>
-              {ATTENDANCE_STANDARDS.map((standard, index) => (
-                <Button
-                  key={index}
-                  size="small"
-                  onClick={() => handleQuickAdd(standard)}
-                >
-                  {standard.type} ({Math.abs(standard.score)}分)
-                </Button>
-              ))}
+              {(() => {
+                const t = allScoreTypes.find(x => x.id === selectedScoreTypeId);
+                const isLearning = t && (t.name.includes('学习') || t.name.includes('培训'));
+                const isDiscipline = t && (t.name.includes('纪律') || t.name.includes('规范'));
+                const list = isLearning ? LEARNING_DEDUCTION_STANDARDS : isDiscipline ? DISCIPLINE_DEDUCTION_STANDARDS : ATTENDANCE_STANDARDS;
+                return list.map((standard, index) => (
+                  <Button
+                    key={index}
+                    size="small"
+                    onClick={() => handleQuickAdd(standard)}
+                    style={{ marginRight: 8, marginBottom: 8 }}
+                  >
+                    {standard.type} ({Math.abs(standard.score)}分)
+                  </Button>
+                ));
+              })()}
             </div>
           </Form.Item>
 

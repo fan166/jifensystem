@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, Tabs, Alert } from 'antd';
-import { UserOutlined, TeamOutlined, SettingOutlined, BarChartOutlined } from '@ant-design/icons';
+import { UserOutlined, TeamOutlined, BarChartOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../stores/authStore';
-import { PermissionSettings } from '../components/PermissionSettings';
+import { useEvaluationVisibility } from '../hooks/useEvaluationVisibility';
 import { PersonalScoreView } from '../components/PersonalScoreView';
 import { DailyEvaluationTab } from '../components/DailyEvaluationTab';
 import { AnnualEvaluationTab } from '../components/AnnualEvaluationTab';
@@ -11,6 +11,7 @@ import { FinalScoreStatistics } from '../components/FinalScoreStatistics';
 const PerformanceEvaluationPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState('daily');
   const { user, isAuthenticated } = useAuthStore();
+  const { dailyVisible, annualVisible, loading: visibilityLoading } = useEvaluationVisibility();
   
   // 基于用户角色的权限检查
   const isAdmin = user?.role === 'system_admin';
@@ -47,18 +48,6 @@ const PerformanceEvaluationPage: React.FC = () => {
       });
     }
 
-    // 年终集体测评 - 所有用户都可以参与
-    items.push({
-      key: 'annual',
-      label: (
-        <div>
-          <TeamOutlined />
-          年终集体测评
-        </div>
-      ),
-      children: <AnnualEvaluationTab />
-    });
-
     // 我的积分 - 除系统管理员外的所有用户都可以查看自己的积分
     if (!isAdmin) {
       items.push({
@@ -70,6 +59,34 @@ const PerformanceEvaluationPage: React.FC = () => {
           </span>
         ),
         children: <PersonalScoreView />
+      });
+    }
+
+    // 日常实绩评价 - 普通用户可见性受开关控制
+    if (isAuthenticated && !hasAdminAccess && user?.role === 'employee' && dailyVisible) {
+      items.push({
+        key: 'daily-performance',
+        label: (
+          <span>
+            <UserOutlined />
+            日常实绩评价
+          </span>
+        ),
+        children: <DailyEvaluationTab />
+      });
+    }
+
+    // 年终集体测评 - 普通用户可见性受开关控制；管理员和领导不受影响
+    if (hasAdminAccess || user?.role === 'leader' || (user?.role === 'employee' && annualVisible)) {
+      items.push({
+        key: 'annual',
+        label: (
+          <div>
+            <TeamOutlined />
+            年终集体测评
+          </div>
+        ),
+        children: <AnnualEvaluationTab />
       });
     }
 
@@ -87,22 +104,20 @@ const PerformanceEvaluationPage: React.FC = () => {
       });
     }
 
-    // 权限设置 - 仅系统管理员可见
-    if (isAdmin) {
-      items.push({
-        key: 'permissions',
-        label: (
-          <span>
-            <SettingOutlined />
-            权限设置
-          </span>
-        ),
-        children: <PermissionSettings />
-      });
-    }
+    // 权限设置已迁移至“系统设置”页面，不再在此展示
 
     return items;
   };
+
+  // 纠正选中Tab：当可用项变化导致当前key不存在时，回退到首个或“我的积分”
+  useEffect(() => {
+    const items = generateTabItems();
+    const exists = items.some(item => item.key === activeTab);
+    if (!exists) {
+      const fallback = items[0]?.key || (!isAdmin ? 'personal' : undefined);
+      if (fallback) setActiveTab(fallback);
+    }
+  }, [dailyVisible, annualVisible, user?.role]);
 
   // 检查认证状态
   if (!isAuthenticated) {
@@ -135,6 +150,15 @@ const PerformanceEvaluationPage: React.FC = () => {
   return (
     <div className="p-6">
       <Card>
+        {user?.role === 'employee' && !visibilityLoading && !dailyVisible && !annualVisible && (
+          <Alert
+            message="当前模块已隐藏"
+            description="系统管理员已禁用普通职工的日常与年终测评入口。"
+            type="info"
+            showIcon
+            className="mb-3"
+          />
+        )}
         <Tabs 
           activeKey={activeTab} 
           onChange={setActiveTab}

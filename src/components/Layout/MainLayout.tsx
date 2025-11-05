@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Layout, Menu, Avatar, Dropdown, Button, Typography, Tag, Breadcrumb, Space } from 'antd';
 import {
   DashboardOutlined,
@@ -9,7 +9,7 @@ import {
   FlagOutlined,
   GiftOutlined,
   BarChartOutlined,
-
+  PieChartOutlined,
   FileTextOutlined,
   RocketOutlined,
   StarOutlined,
@@ -24,9 +24,9 @@ import {
 import NotificationCenter from '../NotificationCenter';
 import PersonalScore from '../PersonalScore';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { useAuthStore, getRoleDisplayName } from '../../stores/authStore';
-import { useAuth } from '../../hooks/useAuth';
+import { useAuthStore } from '../../stores/authStore';
 import type { MenuProps } from 'antd';
+import { useEvaluationVisibility } from '../../hooks/useEvaluationVisibility';
 
 const { Header, Sider, Content } = Layout;
 const { Title } = Typography;
@@ -37,75 +37,97 @@ const MainLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout, hasPermission } = useAuthStore();
-  const { user: authUser, loading } = useAuth();
-
-  // 检查认证状态
-  useEffect(() => {
-    if (!loading && !authUser) {
-      navigate('/login');
-    }
-  }, [authUser, loading, navigate]);
-
-  // 如果正在加载或未认证，显示加载状态
-  if (loading || !authUser) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p>加载中...</p>
-        </div>
-      </div>
-    );
-  }
+  const { dailyVisible, annualVisible, loading: visibilityLoading } = useEvaluationVisibility();
 
   // 基于用户权限动态生成菜单
   const getMenuItems = (): MenuProps['items'] => {
     const baseItems = [
       {
-        key: '/dashboard',
+        key: 'dashboard-menu',
         icon: <DashboardOutlined />,
-        label: '个人主页',
-      },
-      {
-        key: 'score-menu',
-        icon: <TrophyOutlined />,
-        label: '积分管理',
+        label: '首页仪表板',
         children: [
           {
-            key: '/basic-duty-score',
-            icon: <UserOutlined />,
-            label: '基本职责积分',
+            key: '/ranking',
+            icon: <TrophyOutlined />,
+            label: '积分排行榜',
           },
           {
-            key: '/performance-evaluation',
-            icon: <FileTextOutlined />,
-            label: '工作实绩积分',
-          },
-          {
-            key: '/key-work-management',
-            icon: <RocketOutlined />,
-            label: '重点工作积分',
-          },
-          {
-            key: '/performance-reward',
-            icon: <GiftOutlined />,
-            label: '绩效奖励积分',
+            key: '/analytics',
+            icon: <BarChartOutlined />,
+            label: '趋势分析',
           },
         ],
       },
-      {        key: '/analytics',        icon: <BarChartOutlined />,        label: '趋势分析',      },      {        key: '/notifications',        icon: <BellOutlined />,        label: '通知公告',      },    ];
+      // “积分管理”子菜单稍后插入，允许按可见性动态隐藏入口
+    ];
+
+    // 基于可见性动态生成“积分管理”菜单
+    let scoreChildren: NonNullable<MenuProps['items']> = [
+      {
+        key: '/my-score-details',
+        icon: <TrophyOutlined />,
+        label: '我的积分详情',
+      },
+      {
+        key: '/basic-duty-score',
+        icon: <UserOutlined />,
+        label: '基本职责积分',
+      },
+      {
+        key: '/performance-evaluation',
+        icon: <FileTextOutlined />,
+        label: '工作实绩积分',
+      },
+      {
+        key: '/key-work-management',
+        icon: <RocketOutlined />,
+        label: '重点工作积分',
+      },
+      {
+        key: '/performance-reward',
+        icon: <GiftOutlined />,
+        label: '绩效奖励积分',
+      },
+    ];
+
+    // 普通职工在两个开关都关闭时隐藏“工作实绩积分”入口
+    if (user?.role === 'employee' && !visibilityLoading && !dailyVisible && !annualVisible) {
+      scoreChildren = scoreChildren.filter(item => item && (item as any).key !== '/performance-evaluation');
+    }
+
+    baseItems.push({
+      key: 'score-menu',
+      icon: <TrophyOutlined />,
+      label: '积分管理',
+      children: scoreChildren,
+    });
+
+    // 所有角色都可见的“通知公告”，位置在“系统设置”上方
+    baseItems.push({
+      key: '/notifications',
+      icon: <BellOutlined />,
+      label: '通知公告',
+    });
 
     // 管理员和经理可以看到的菜单项
-    // 结果运用模块已移除
+    if (hasPermission('write')) {
+      // 移除了统计分析和结果运用菜单项
+    }
 
     // 仅管理员可以看到的菜单项
     if (hasPermission('admin')) {
       baseItems.push(
         {
-          key: '/settings',
+          key: 'settings-menu',
           icon: <SettingOutlined />,
           label: '系统设置',
           children: [
+            {
+              key: '/settings',
+              icon: <SettingOutlined />,
+              label: '测评权限设置',
+            },
             {
               key: '/personnel',
               icon: <TeamOutlined />,
@@ -178,28 +200,30 @@ const MainLayout: React.FC = () => {
   // 生成面包屑导航
   const getBreadcrumbItems = () => {
     const pathMap: Record<string, string> = {
-      '/dashboard': '个人主页',
+      '/analytics': '趋势分析',
+      '/my-score-details': '我的积分详情',
       '/basic-duty-score': '基本职责积分',
       '/performance-evaluation': '工作实绩积分',
       '/key-work-management': '重点工作积分',
       '/performance-reward': '绩效奖励积分',
-      '/analytics': '趋势分析',
-      '/notifications': '通知公告',
+      '/ranking': '积分排行榜',
       '/personnel': '人员管理',
       '/settings': '系统设置',
       '/profile': '个人中心',
     };
 
     const pathSegments = location.pathname.split('/').filter(Boolean);
-    const breadcrumbItems = [{ title: '首页' }];
+    // 通知公告页面将面包屑根项改为“通知公告”
+    const breadcrumbItems = [{ title: location.pathname === '/notifications' ? '通知公告' : '首页' }];
 
-    if (location.pathname !== '/dashboard') {
-      // 特殊处理人员管理页面，显示系统设置 > 人员管理
-      if (location.pathname === '/personnel') {
-        breadcrumbItems.push({ title: '系统设置' });
-        breadcrumbItems.push({ title: '人员管理' });
-      } else {
-        const currentPageTitle = pathMap[location.pathname] || '未知页面';
+    // 为仪表板相关页面添加层级导航
+    if (location.pathname === '/analytics' || location.pathname === '/ranking') {
+      breadcrumbItems.push({ title: '首页仪表板' });
+      const currentPageTitle = pathMap[location.pathname] || '未知页面';
+      breadcrumbItems.push({ title: currentPageTitle });
+    } else {
+      const currentPageTitle = pathMap[location.pathname] || '未知页面';
+      if (currentPageTitle !== '未知页面') {
         breadcrumbItems.push({ title: currentPageTitle });
       }
     }
@@ -221,9 +245,7 @@ const MainLayout: React.FC = () => {
           {!collapsed ? (
             <div className="flex items-center justify-center space-x-2">
               <TrophyOutlined className="text-blue-600 text-xl" />
-              <Title level={4} className="text-blue-600 mb-0">
-                积分制管理系统
-              </Title>
+              <Title level={4} className="text-blue-600 mb-0">积分制绩效管理系统</Title>
             </div>
           ) : (
             <TrophyOutlined className="text-blue-600 text-2xl" />
@@ -262,9 +284,10 @@ const MainLayout: React.FC = () => {
                 {user?.role && (
                   <Tag color={
                     user.role === 'system_admin' ? 'red' :
-                    user.role === 'assessment_admin' ? 'blue' : 'green'
+              user.role === 'assessment_admin' ? 'blue' : 'green'
                   }>
-                    {getRoleDisplayName(user.role)}
+                    {user.role === 'system_admin' ? '系统管理员' :
+            user.role === 'assessment_admin' ? '考核办管理员' : '普通职工'}
                   </Tag>
                 )}
                 <Dropdown

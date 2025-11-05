@@ -1,14 +1,14 @@
 import React from 'react';
-import { Card, Typography } from 'antd';
-
-const { Title } = Typography;
+import { Card } from 'antd';
+import { PermissionSettings } from '../components/PermissionSettings';
 
 const Settings: React.FC = () => {
   return (
     <div className="p-6">
       <Card>
-        <Title level={2}>系统设置</Title>
-        <p>系统设置页面 - 开发中...</p>
+        <div className="mt-4">
+          <PermissionSettings />
+        </div>
       </Card>
     </div>
   );

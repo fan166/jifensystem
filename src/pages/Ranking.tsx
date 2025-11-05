@@ -1,590 +1,370 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Card,
+  Typography,
+  Table,
+  Input,
+  Select,
   Row,
   Col,
-  Table,
-  Tabs,
+  Statistic,
+  Space,
   Tag,
   Avatar,
-  Space,
-  Statistic,
-  Progress,
-  Select,
-  DatePicker,
-  Button,
-  Typography,
-  Divider
+  Tooltip,
+  Spin
 } from 'antd';
 import {
   TrophyOutlined,
-  CrownOutlined,
-  RiseOutlined,
-  TeamOutlined,
+  SearchOutlined,
   UserOutlined,
-  CalendarOutlined
+  TeamOutlined,
+  RiseOutlined,
+  FallOutlined
 } from '@ant-design/icons';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import type { ColumnsType } from 'antd/es/table';
-import dayjs from 'dayjs';
-import { scoreAPI, userAPI, departmentAPI } from '../services/api';
-import { useAuthStore } from '../stores/authStore';
-import { useNavigate } from 'react-router-dom';
 
-const { Title, Text } = Typography;
-// const { TabPane } = Tabs; // 已废弃，使用items属性
-const { RangePicker } = DatePicker;
+const { Title } = Typography;
+const { Option } = Select;
 
-interface PersonalRanking {
+// 数据类型定义
+interface RankingData {
   id: string;
   name: string;
   department: string;
-  position: string;
-  totalScore: number;
-  basicDuty: number;
-  workPerformance: number;
-  keyWork: number;
-  performanceReward: number;
-  rank: number;
-  lastMonthRank: number;
   avatar?: string;
+  totalScore: number;
+  basicScore: number;
+  performanceScore: number;
+  keyWorkScore: number;
+  bonusScore: number;
+  rank: number;
 }
 
-interface DepartmentRanking {
-  id: string;
-  name: string;
-  totalScore: number;
+interface Statistics {
+  totalPeople: number;
   averageScore: number;
-  memberCount: number;
-  rank: number;
-  lastMonthRank: number;
-  topPerformer: string;
+  highestScore: number;
+  lowestScore: number;
 }
+
+// 模拟数据生成
+const generateMockData = (): RankingData[] => {
+  const departments = ['行政部', '财务部', '人事部', '技术部', '市场部', '销售部'];
+  const names = [
+    '张三', '李四', '王五', '赵六', '钱七', '孙八', '周九', '吴十',
+    '郑十一', '王十二', '冯十三', '陈十四', '褚十五', '卫十六', '蒋十七', '沈十八',
+    '韩十九', '杨二十', '朱二十一', '秦二十二', '尤二十三', '许二十四', '何二十五',
+    '吕二十六', '施二十七', '张二十八', '孔二十九', '曹三十'
+  ];
+
+  return names.map((name, index) => {
+    const basicScore = Math.floor(Math.random() * 30) + 70; // 70-100
+    const performanceScore = Math.floor(Math.random() * 40) + 60; // 60-100
+    const keyWorkScore = Math.floor(Math.random() * 35) + 65; // 65-100
+    const bonusScore = Math.floor(Math.random() * 20); // 0-20
+    const totalScore = basicScore + performanceScore + keyWorkScore + bonusScore;
+
+    return {
+      id: `user_${index + 1}`,
+      name,
+      department: departments[Math.floor(Math.random() * departments.length)],
+      avatar: `https://api.dicebear.com/7.x/miniavs/svg?seed=${name}`,
+      basicScore,
+      performanceScore,
+      keyWorkScore,
+      bonusScore,
+      totalScore,
+      rank: 0 // 将在排序后设置
+    };
+  }).sort((a, b) => b.totalScore - a.totalScore)
+    .map((item, index) => ({ ...item, rank: index + 1 }));
+};
 
 const Ranking: React.FC = () => {
-  const navigate = useNavigate();
-  const { user } = useAuthStore();
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState('personal');
-  const [timeRange, setTimeRange] = useState('month');
-  const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null);
-  const [personalRankings, setPersonalRankings] = useState<PersonalRanking[]>([]);
-  const [departmentRankings, setDepartmentRankings] = useState<DepartmentRanking[]>([]);
-  
-  // 从Dashboard移过来的状态
-  const [topUsers, setTopUsers] = useState<any[]>([]);
-  const [departmentStats, setDepartmentStats] = useState<any[]>([]);
-  const [categoryData, setCategoryData] = useState<any[]>([]);
+  const [searchText, setSearchText] = useState('');
+  const [selectedDepartment, setSelectedDepartment] = useState<string>('');
+  const [pageSize, setPageSize] = useState(10);
 
-  useEffect(() => {
-    loadRankingData();
-  }, [timeRange, dateRange]);
+  // 生成模拟数据
+  const mockData = useMemo(() => generateMockData(), []);
 
-  const loadRankingData = async () => {
-    setLoading(true);
-    try {
-      const currentPeriod = new Date().toISOString().slice(0, 7);
-      const [rankingData, departments, users, scores] = await Promise.all([
-        scoreAPI.getScoreRanking(currentPeriod),
-        departmentAPI.getDepartments(),
-        userAPI.getUsers(),
-        scoreAPI.getScores({ period: currentPeriod })
-      ]);
-      
-      // 设置排行榜前5名
-      setTopUsers(rankingData.slice(0, 5));
-      
-      // 计算部门统计
-      const deptStats = departments.map((dept: any) => {
-        const deptUsers = users.filter((u: any) => u.department_id === dept.id);
-        const deptScores = scores.filter((score: any) => 
-          deptUsers.some((u: any) => u.id === score.user_id)
-        );
-        const totalScore = deptScores.reduce((sum: number, score: any) => sum + (score.score || 0), 0);
-        
-        return {
-          name: dept.name,
-          totalScore,
-          userCount: deptUsers.length,
-          avgScore: deptUsers.length > 0 ? (totalScore / deptUsers.length).toFixed(1) : '0'
-        };
-      }).sort((a, b) => b.totalScore - a.totalScore);
-      
-      setDepartmentStats(deptStats.slice(0, 5));
-      
-      // 计算积分类别分布
-      const categoryStats = {
-        '基本职责': 0,
-        '工作实绩': 0,
-        '重点工作': 0,
-        '绩效奖励': 0
-      };
-      
-      scores.forEach((score: any) => {
-        const category = score.score_type?.category;
-        if (category && categoryStats.hasOwnProperty(category)) {
-          categoryStats[category as keyof typeof categoryStats] += score.score || 0;
-        }
-      });
-      
-      const pieData = Object.entries(categoryStats).map(([name, value]) => ({
-        name,
-        value,
-        percentage: ((value / Object.values(categoryStats).reduce((a, b) => a + b, 0)) * 100).toFixed(1)
-      }));
-      
-      setCategoryData(pieData);
-      
-      // 转换为个人排行榜格式
-      const personalData: PersonalRanking[] = rankingData.map((item: any, index: number) => ({
-        id: item.userId,
-        name: item.user?.name || '未知用户',
-        department: item.user?.department?.name || '未知部门',
-        position: item.user?.position || '未知职位',
-        totalScore: item.totalScore || 0,
-        basicDuty: item.basicDuty || 0,
-        workPerformance: item.workPerformance || 0,
-        keyWork: item.keyWork || 0,
-        performanceReward: item.bonus || 0,
-        rank: index + 1,
-        lastMonthRank: index + 1 // 暂时使用当前排名
-      }));
-      
-      setPersonalRankings(personalData);
-      
-      // 转换为部门排行榜格式
-      const departmentData: DepartmentRanking[] = deptStats.map((dept: any, index: number) => ({
-        id: dept.name,
-        name: dept.name,
-        totalScore: dept.totalScore,
-        averageScore: parseFloat(dept.avgScore),
-        memberCount: dept.userCount,
-        rank: index + 1,
-        lastMonthRank: index + 1, // 暂时使用当前排名
-        topPerformer: '待统计'
-      }));
-      
-      setDepartmentRankings(departmentData);
-      
-    } catch (error) {
-      console.error('加载排行榜数据失败:', error);
-    } finally {
-      setLoading(false);
+  // 筛选和搜索逻辑
+  const filteredData = useMemo(() => {
+    return mockData.filter(item => {
+      const matchesSearch = item.name.toLowerCase().includes(searchText.toLowerCase());
+      const matchesDepartment = !selectedDepartment || item.department === selectedDepartment;
+      return matchesSearch && matchesDepartment;
+    });
+  }, [mockData, searchText, selectedDepartment]);
+
+  // 统计信息计算
+  const statistics: Statistics = useMemo(() => {
+    const scores = filteredData.map(item => item.totalScore);
+    return {
+      totalPeople: filteredData.length,
+      averageScore: Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length) || 0,
+      highestScore: Math.max(...scores) || 0,
+      lowestScore: Math.min(...scores) || 0
+    };
+  }, [filteredData]);
+
+  // 获取排名样式
+  const getRankBadge = (rank: number) => {
+    if (rank === 1) {
+      return <span title="第一名" style={{ fontSize: '16px' }}>🥇</span>;
+    } else if (rank === 2) {
+      return <span title="第二名" style={{ fontSize: '16px' }}>🥈</span>;
+    } else if (rank === 3) {
+      return <span title="第三名" style={{ fontSize: '16px' }}>🥉</span>;
     }
+    return <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#666' }}>{rank}</span>;
   };
 
-  const getRankIcon = (rank: number) => {
-    if (rank === 1) return <CrownOutlined style={{ color: '#FFD700' }} />;
-    if (rank === 2) return <TrophyOutlined style={{ color: '#C0C0C0' }} />;
-    if (rank === 3) return <TrophyOutlined style={{ color: '#CD7F32' }} />;
-    return <span className="text-gray-500">#{rank}</span>;
+  // 获取排名行样式
+  const getRowClassName = (record: RankingData) => {
+    if (record.rank === 1) return 'rank-first';
+    if (record.rank === 2) return 'rank-second';
+    if (record.rank === 3) return 'rank-third';
+    return '';
   };
 
-  const getRankChange = (currentRank: number, lastRank: number) => {
-    const change = lastRank - currentRank;
-    if (change > 0) {
-      return <Tag color="green" icon={<RiseOutlined />}>↑{change}</Tag>;
-    } else if (change < 0) {
-      return <Tag color="red">↓{Math.abs(change)}</Tag>;
-    }
-    return <Tag color="default">-</Tag>;
-  };
-
-  const personalColumns: ColumnsType<PersonalRanking> = [
+  // 表格列定义
+  const columns: ColumnsType<RankingData> = [
     {
       title: '排名',
       dataIndex: 'rank',
       key: 'rank',
       width: 80,
-      render: (rank) => (
-        <div className="flex items-center justify-center">
-          {getRankIcon(rank)}
-        </div>
-      )
+      align: 'center',
+      render: (rank: number) => getRankBadge(rank),
+      sorter: (a, b) => a.rank - b.rank,
     },
     {
       title: '姓名',
       dataIndex: 'name',
       key: 'name',
-      render: (name, record) => (
+      width: 120,
+      render: (name: string, record: RankingData) => (
         <Space>
-          <Avatar icon={<UserOutlined />} />
-          <div>
-            <div className="font-medium">{name}</div>
-            <div className="text-sm text-gray-500">{record.position}</div>
-          </div>
+          <Avatar 
+            size="small" 
+            src={record.avatar} 
+            icon={<UserOutlined />}
+          />
+          <span style={{ fontWeight: record.rank <= 3 ? 'bold' : 'normal' }}>
+            {name}
+          </span>
         </Space>
-      )
+      ),
+      sorter: (a, b) => a.name.localeCompare(b.name),
     },
     {
       title: '部门',
       dataIndex: 'department',
       key: 'department',
-      render: (department) => <Tag color="blue">{department}</Tag>
+      width: 100,
+      render: (department: string) => (
+        <Tag color="blue">{department}</Tag>
+      ),
+      filters: Array.from(new Set(mockData.map(item => item.department))).map(dept => ({
+        text: dept,
+        value: dept,
+      })),
+      onFilter: (value, record) => record.department === value,
     },
     {
       title: '总积分',
       dataIndex: 'totalScore',
       key: 'totalScore',
-      sorter: (a, b) => a.totalScore - b.totalScore,
-      render: (score) => (
-        <span className="font-bold text-lg text-blue-600">{score}</span>
-      )
+      width: 100,
+      align: 'center',
+      render: (score: number, record: RankingData) => (
+        <span 
+          style={{ 
+            fontSize: '16px',
+            fontWeight: record.rank <= 3 ? 'bold' : 'normal',
+            color: record.rank <= 3 ? '#1890ff' : '#333'
+          }}
+        >
+          {score}
+        </span>
+      ),
+      sorter: (a, b) => b.totalScore - a.totalScore,
+      defaultSortOrder: 'descend',
     },
     {
       title: '基本职责',
-      dataIndex: 'basicDuty',
-      key: 'basicDuty',
-      width: 100
+      dataIndex: 'basicScore',
+      key: 'basicScore',
+      width: 100,
+      align: 'center',
+      sorter: (a, b) => b.basicScore - a.basicScore,
     },
     {
       title: '工作实绩',
-      dataIndex: 'workPerformance',
-      key: 'workPerformance',
-      width: 100
+      dataIndex: 'performanceScore',
+      key: 'performanceScore',
+      width: 100,
+      align: 'center',
+      sorter: (a, b) => b.performanceScore - a.performanceScore,
     },
     {
       title: '重点工作',
-      dataIndex: 'keyWork',
-      key: 'keyWork',
-      width: 100
-    },
-    {
-      title: '绩效奖励',
-      dataIndex: 'performanceReward',
-      key: 'performanceReward',
-      width: 100
-    },
-    {
-      title: '排名变化',
-      key: 'rankChange',
+      dataIndex: 'keyWorkScore',
+      key: 'keyWorkScore',
       width: 100,
-      render: (_, record) => getRankChange(record.rank, record.lastMonthRank)
-    }
-  ];
-
-  const departmentColumns: ColumnsType<DepartmentRanking> = [
-    {
-      title: '排名',
-      dataIndex: 'rank',
-      key: 'rank',
-      width: 80,
-      render: (rank) => (
-        <div className="flex items-center justify-center">
-          {getRankIcon(rank)}
-        </div>
-      )
+      align: 'center',
+      sorter: (a, b) => b.keyWorkScore - a.keyWorkScore,
     },
     {
-      title: '部门名称',
-      dataIndex: 'name',
-      key: 'name',
-      render: (name) => (
-        <Space>
-          <Avatar icon={<TeamOutlined />} />
-          <span className="font-medium">{name}</span>
-        </Space>
-      )
-    },
-    {
-      title: '总积分',
-      dataIndex: 'totalScore',
-      key: 'totalScore',
-      sorter: (a, b) => a.totalScore - b.totalScore,
-      render: (score) => (
-        <span className="font-bold text-lg text-blue-600">{score}</span>
-      )
-    },
-    {
-      title: '平均积分',
-      dataIndex: 'averageScore',
-      key: 'averageScore',
-      render: (score) => (
-        <span className="font-medium">{score}</span>
-      )
-    },
-    {
-      title: '人员数量',
-      dataIndex: 'memberCount',
-      key: 'memberCount',
-      render: (count) => `${count}人`
-    },
-    {
-      title: '最佳员工',
-      dataIndex: 'topPerformer',
-      key: 'topPerformer',
-      render: (name) => <Tag color="gold">{name}</Tag>
-    },
-    {
-      title: '排名变化',
-      key: 'rankChange',
+      title: '奖励积分',
+      dataIndex: 'bonusScore',
+      key: 'bonusScore',
       width: 100,
-      render: (_, record) => getRankChange(record.rank, record.lastMonthRank)
-    }
+      align: 'center',
+      render: (score: number) => (
+        <span style={{ color: score > 0 ? '#52c41a' : '#666' }}>
+          {score > 0 && '+'}{score}
+        </span>
+      ),
+      sorter: (a, b) => b.bonusScore - a.bonusScore,
+    },
   ];
 
   return (
     <div className="p-6">
-      <div className="mb-6">
-        <Title level={2}>
-          <TrophyOutlined className="mr-2" />
-          积分排行榜
-        </Title>
-        <Text type="secondary">查看各部门和个人的积分排名情况</Text>
-      </div>
+      <Title level={2} style={{ marginBottom: 24, display: 'flex', alignItems: 'center' }}>
+        <TrophyOutlined style={{ marginRight: 8, color: '#1890ff' }} />
+        积分排行榜
+      </Title>
 
-      {/* 筛选条件 */}
-      <Card className="mb-6">
+      {/* 统计信息卡片 */}
+      <Row gutter={16} style={{ marginBottom: 24 }}>
+        <Col xs={12} sm={6}>
+          <Card>
+            <Statistic
+              title="总人数"
+              value={statistics.totalPeople}
+              prefix={<TeamOutlined />}
+              valueStyle={{ color: '#1890ff' }}
+            />
+          </Card>
+        </Col>
+        <Col xs={12} sm={6}>
+          <Card>
+            <Statistic
+              title="平均积分"
+              value={statistics.averageScore}
+              precision={0}
+              valueStyle={{ color: '#52c41a' }}
+            />
+          </Card>
+        </Col>
+        <Col xs={12} sm={6}>
+          <Card>
+            <Statistic
+              title="最高积分"
+              value={statistics.highestScore}
+              prefix={<RiseOutlined />}
+              valueStyle={{ color: '#f5222d' }}
+            />
+          </Card>
+        </Col>
+        <Col xs={12} sm={6}>
+          <Card>
+            <Statistic
+              title="最低积分"
+              value={statistics.lowestScore}
+              prefix={<FallOutlined />}
+              valueStyle={{ color: '#faad14' }}
+            />
+          </Card>
+        </Col>
+      </Row>
+
+      {/* 筛选和搜索 */}
+      <Card style={{ marginBottom: 16 }}>
         <Row gutter={16} align="middle">
-          <Col>
-            <Space>
-              <CalendarOutlined />
-              <Text>时间范围：</Text>
-              <Select
-                value={timeRange}
-                onChange={setTimeRange}
-                style={{ width: 120 }}
-              >
-                <Select.Option value="week">本周</Select.Option>
-                <Select.Option value="month">本月</Select.Option>
-                <Select.Option value="quarter">本季度</Select.Option>
-                <Select.Option value="year">本年度</Select.Option>
-                <Select.Option value="custom">自定义</Select.Option>
-              </Select>
-            </Space>
+          <Col xs={24} sm={12} md={8}>
+            <Input
+              placeholder="搜索姓名"
+              prefix={<SearchOutlined />}
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              allowClear
+            />
           </Col>
-          {timeRange === 'custom' && (
-            <Col>
-              <RangePicker
-                value={dateRange}
-                onChange={setDateRange}
-                placeholder={['开始日期', '结束日期']}
-              />
-            </Col>
-          )}
-          <Col>
-            <Button onClick={loadRankingData}>刷新数据</Button>
+          <Col xs={24} sm={12} md={8}>
+            <Select
+              placeholder="选择部门"
+              style={{ width: '100%' }}
+              value={selectedDepartment}
+              onChange={setSelectedDepartment}
+              allowClear
+            >
+              {Array.from(new Set(mockData.map(item => item.department))).map(dept => (
+                <Option key={dept} value={dept}>{dept}</Option>
+              ))}
+            </Select>
+          </Col>
+          <Col xs={24} sm={12} md={8}>
+            <Select
+              placeholder="每页显示"
+              style={{ width: '100%' }}
+              value={pageSize}
+              onChange={setPageSize}
+            >
+              <Option value={10}>10条/页</Option>
+              <Option value={20}>20条/页</Option>
+              <Option value={50}>50条/页</Option>
+            </Select>
           </Col>
         </Row>
       </Card>
 
-      {/* 积分排行榜概览 */}
-      <Row gutter={[24, 24]} className="mb-8">
-        <Col xs={24} lg={14}>
-          <Card 
-            title="积分排行榜概览" 
-            className="shadow-lg hover:shadow-xl transition-shadow duration-300" 
-            extra={<a onClick={() => setActiveTab('personal')} className="text-blue-600 hover:text-blue-800">查看详情</a>}
-            bodyStyle={{ padding: '20px' }}
-          >
-            <div className="space-y-4">
-              {topUsers.slice(0, 5).map((user, index) => (
-                <div key={user.id} className="flex items-center justify-between p-4 bg-gradient-to-r from-gray-50 to-blue-50 rounded-xl hover:from-blue-50 hover:to-indigo-50 transition-all duration-300 border border-gray-100 hover:border-blue-200">
-                  <div className="flex items-center space-x-4">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-md ${
-                      index === 0 ? 'bg-gradient-to-r from-yellow-400 to-yellow-600' : 
-                      index === 1 ? 'bg-gradient-to-r from-gray-400 to-gray-600' : 
-                      index === 2 ? 'bg-gradient-to-r from-orange-400 to-orange-600' : 'bg-gradient-to-r from-blue-400 to-blue-600'
-                    }`}>
-                      {index + 1}
-                    </div>
-                    <div>
-                      <div className="font-semibold text-gray-800 text-lg">{user.user?.name || '未知用户'}</div>
-                      <div className="text-sm text-gray-600">{user.user?.department?.name || '未知部门'}</div>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-bold text-blue-600 text-xl">{user.totalScore}分</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
-        </Col>
-
-        <Col xs={24} lg={10}>
-          <Card 
-            title="积分类别分布" 
-            className="shadow-lg hover:shadow-xl transition-shadow duration-300"
-            bodyStyle={{ padding: '20px' }}
-          >
-            <div className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={categoryData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={({ name, percentage }) => `${name} ${percentage}%`}
-                    outerRadius={100}
-                    fill="#8884d8"
-                    dataKey="value"
-                  >
-                    {categoryData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={['#0088FE', '#00C49F', '#FFBB28', '#FF8042'][index % 4]} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          </Card>
-        </Col>
-      </Row>
-
-      {/* 排行榜内容 */}
+      {/* 排行榜表格 */}
       <Card>
-        <Tabs 
-          activeKey={activeTab} 
-          onChange={setActiveTab}
-          items={[
-            {
-              key: 'personal',
-              label: (
-                <span>
-                  <UserOutlined />
-                  个人排行榜
-                </span>
-              ),
-              children: (
-                <>
-                  {/* 前三名展示 */}
-                  <Row gutter={16} className="mb-6">
-                    {personalRankings.slice(0, 3).map((person, index) => (
-                      <Col span={8} key={person.id}>
-                        <Card className="text-center">
-                          <div className="mb-4">
-                            {getRankIcon(person.rank)}
-                          </div>
-                          <Avatar size={64} icon={<UserOutlined />} className="mb-2" />
-                          <Title level={4} className="mb-1">{person.name}</Title>
-                          <Text type="secondary">{person.department}</Text>
-                          <Divider />
-                          <Statistic
-                            title="总积分"
-                            value={person.totalScore}
-                            valueStyle={{ color: '#1890ff' }}
-                          />
-                          <div className="mt-2">
-                            {getRankChange(person.rank, person.lastMonthRank)}
-                          </div>
-                        </Card>
-                      </Col>
-                    ))}
-                  </Row>
-
-                  <Table
-                    columns={personalColumns}
-                    dataSource={personalRankings}
-                    rowKey="id"
-                    loading={loading}
-                    pagination={{
-                      pageSize: 20,
-                      showSizeChanger: true,
-                      showQuickJumper: true,
-                      showTotal: (total) => `共 ${total} 条记录`
-                    }}
-                  />
-                </>
-              )
-            },
-            {
-              key: 'department',
-              label: (
-                <span>
-                  <TeamOutlined />
-                  部门排行榜
-                </span>
-              ),
-              children: (
-                <>
-                  {/* 前三名部门展示 */}
-                  <Row gutter={16} className="mb-6">
-                    {departmentRankings.slice(0, 3).map((dept) => (
-                      <Col span={8} key={dept.id}>
-                        <Card className="text-center">
-                          <div className="mb-4">
-                            {getRankIcon(dept.rank)}
-                          </div>
-                          <Avatar size={64} icon={<TeamOutlined />} className="mb-2" />
-                          <Title level={4} className="mb-1">{dept.name}</Title>
-                          <Text type="secondary">最佳员工：{dept.topPerformer}</Text>
-                          <Divider />
-                          <Row gutter={16}>
-                            <Col span={12}>
-                              <Statistic
-                                title="总积分"
-                                value={dept.totalScore}
-                                valueStyle={{ color: '#1890ff' }}
-                              />
-                            </Col>
-                            <Col span={12}>
-                              <Statistic
-                                title="平均积分"
-                                value={dept.averageScore}
-                                valueStyle={{ color: '#52c41a' }}
-                              />
-                            </Col>
-                          </Row>
-                          <div className="mt-2">
-                            {getRankChange(dept.rank, dept.lastMonthRank)}
-                          </div>
-                        </Card>
-                      </Col>
-                    ))}
-                  </Row>
-
-                  <Table
-                    columns={departmentColumns}
-                    dataSource={departmentRankings}
-                    rowKey="id"
-                    loading={loading}
-                    pagination={{
-                      pageSize: 10,
-                      showSizeChanger: true,
-                      showTotal: (total) => `共 ${total} 条记录`
-                    }}
-                  />
-                </>
-              )
-            }
-          ]}
-        />
+        <Spin spinning={loading}>
+          <Table
+            columns={columns}
+            dataSource={filteredData}
+            rowKey="id"
+            rowClassName={getRowClassName}
+            pagination={{
+              pageSize,
+              showSizeChanger: false,
+              showQuickJumper: true,
+              showTotal: (total, range) => 
+                `第 ${range[0]}-${range[1]} 条，共 ${total} 条记录`,
+            }}
+            scroll={{ x: 800 }}
+            locale={{
+              emptyText: '暂无数据'
+            }}
+          />
+        </Spin>
       </Card>
 
-      {/* 部门积分统计 */}
-      <Row gutter={[24, 24]} className="mt-8">
-        <Col xs={24}>
-          <Card 
-            title="部门积分统计" 
-            className="shadow-lg hover:shadow-xl transition-shadow duration-300" 
-            extra={<a onClick={() => setActiveTab('department')} className="text-blue-600 hover:text-blue-800">查看详情</a>}
-            bodyStyle={{ padding: '20px' }}
-          >
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={departmentStats}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis 
-                    dataKey="name" 
-                    tick={{ fontSize: 12 }}
-                    interval={0}
-                    angle={-45}
-                    textAnchor="end"
-                    height={60}
-                  />
-                  <YAxis tick={{ fontSize: 12 }} />
-                  <Tooltip />
-                  <Bar dataKey="totalScore" fill="#3b82f6" />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </Card>
-        </Col>
-      </Row>
-      
-
+      {/* 自定义样式 */}
+      <style jsx>{`
+        .rank-first {
+          background: linear-gradient(90deg, #fff7e6 0%, #ffffff 100%);
+          border-left: 4px solid #FFD700;
+        }
+        .rank-second {
+          background: linear-gradient(90deg, #f6f6f6 0%, #ffffff 100%);
+          border-left: 4px solid #C0C0C0;
+        }
+        .rank-third {
+          background: linear-gradient(90deg, #fff2e8 0%, #ffffff 100%);
+          border-left: 4px solid #CD7F32;
+        }
+        .ant-table-tbody > tr:hover > td {
+          background: #e6f7ff !important;
+        }
+      `}</style>
     </div>
   );
 };

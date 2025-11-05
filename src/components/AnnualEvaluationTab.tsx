@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 import { Loader2, Plus, Calendar, User, Star, Edit, Trash2, Award, Users, Check, X, Filter } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useDynamicPermissionCheck, useRoleCheck } from '../hooks/usePermissionCheck';
+import { useEvaluationVisibility } from '../hooks/useEvaluationVisibility';
 
 interface User {
   id: string;
@@ -116,6 +117,7 @@ export const AnnualEvaluationTab: React.FC = () => {
   const { user } = useAuth();
   const { hasPermission } = useDynamicPermissionCheck();
   const { userRole, isAdmin, isLeader } = useRoleCheck();
+  const { annualVisible } = useEvaluationVisibility();
   const [permissions, setPermissions] = useState({
     canView: false,
     canCreate: false,
@@ -147,12 +149,21 @@ export const AnnualEvaluationTab: React.FC = () => {
     }
   }, [permissions.canView, selectedPeriod]);
 
+  // 当可见性或角色发生变化时，实时更新权限
+  useEffect(() => {
+    checkPermissions();
+  }, [annualVisible, isAdmin, isLeader, user?.role]);
+
   const checkPermissions = async () => {
-    // 允许所有登录用户查看和操作年终集体测评表
+    // 员工受可见性开关控制；管理员和领导不受影响
+    const isEmployee = user?.role === 'employee';
+    const canView = isEmployee ? !!annualVisible : true;
+    const canCreate = isEmployee ? !!annualVisible : true;
+    const canEdit = isEmployee ? !!annualVisible : true;
     setPermissions({
-      canView: true,
-      canCreate: true,
-      canEdit: true,
+      canView,
+      canCreate,
+      canEdit,
       canApprove: isAdmin || isLeader
     });
   };
@@ -512,29 +523,18 @@ export const AnnualEvaluationTab: React.FC = () => {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <h3 className="text-lg font-semibold">年终集体测评</h3>
-          <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
-            <SelectTrigger className="w-32">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {PERIOD_OPTIONS.map(option => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        {/* 移除：标题与期间选择器容器 */}
         {permissions.canCreate && (
           <div className="flex gap-2">
             <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
               <DialogTrigger asChild>
-                <Button onClick={() => { resetForm(); setEditingEvaluation(null); setBatchEvaluationMode(false); }}>
-              <Plus className="h-4 w-4 mr-1" />
-              新建测评
-            </Button>
+                <div 
+                  className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2 cursor-pointer"
+                  onClick={() => { resetForm(); setEditingEvaluation(null); setBatchEvaluationMode(false); }}
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  新建测评
+                </div>
             <div 
               className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2 cursor-pointer"
               onClick={() => { resetForm(); setEditingEvaluation(null); setBatchEvaluationMode(true); setShowCreateDialog(true); }}

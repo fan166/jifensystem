@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Table, Button, Modal, Form, Input, Select, InputNumber, message, Space, Tag, Spin, DatePicker, Row, Col, Statistic, Tooltip, Alert } from 'antd';
+import { Card, Table, Button, Modal, Form, Input, Select, InputNumber, message, Space, Tag, Spin, DatePicker, Row, Col, Statistic, Tooltip, Alert, Badge, Progress } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, WarningOutlined, ExclamationCircleOutlined, MinusOutlined, BarChartOutlined } from '@ant-design/icons';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import type { ColumnsType } from 'antd/es/table';
@@ -26,39 +26,39 @@ const DISCIPLINE_STANDARDS = [
   { 
     type: '办公场所清洁卫生及安全节约违规', 
     score: -0.5, 
-    description: '保持办公场所清洁卫生，下班前要关闭好办公室的门、窗、柜、水、电及电脑，确保安全和节约，凡违反一次，所有相关责任人每次扣0.5分', 
+    description: '保持办公场所清洁卫生，下班前要关闭好办公室的门、窗、柜、水、电及电脑，确保安全和节约，凡违反一次，所有相关责任人每次扣 0.5 分；', 
     severity: 'low' 
   },
   { 
     type: '工作时间非工作状态行为', 
     score: -0.5, 
-    description: '工作时间上网聊天、玩游戏、购物、炒股等不在工作状态的每次扣0.5分，情节严重者扣2分', 
+    description: '工作时间上网聊天、玩游戏、购物、炒股等不在工作状态的每次扣 0.5 分，情节严重者扣 2 分；', 
     severity: 'low',
     severeCases: { score: -2, severity: 'medium' }
   },
   { 
     type: '不遵守机关管理制度', 
     score: -1, 
-    description: '不遵守机关各项管理制度如请销假、办事制度、印章管理使用等每例扣1分', 
+    description: '不遵守机关各项管理制度如请销假、办事制度、印章管理使用等每例扣 1 分；', 
     severity: 'low' 
   },
   { 
     type: '无故不参加集体活动', 
     score: -1, 
-    description: '积极参加市公路中心统一组织的各类活动等，凡无故不参加的每次扣1分', 
+    description: '积极参加市公路中心统一组织的各类活动等，凡无故不参加的每次扣 1 分；', 
     severity: 'low' 
   },
   { 
     type: '不服从组织安排', 
     score: -3, 
-    description: '服从组织安排，做好内部协调配合，主动接受领导安排的各项临时性工作任务，凡推诿扯皮、敷衍了事、无故不参加的每次扣3分，情节严重者扣5分', 
+    description: '服从组织安排，做好内部协调配合，主动接受领导安排的各项临时性工作任务，凡推诿扯皮、敷衍了事、无故不参加的每次扣 3 分，情节严重者扣 5 分；', 
     severity: 'high',
     severeCases: { score: -5, severity: 'critical' }
   },
   { 
     type: '纪律问题按处分级别', 
     score: -0.5, 
-    description: '将纪律挺在前面，因工作、作风、廉政等问题，当年受到市公路中心党委约谈或提醒谈话的每例扣0.5分、书面检查每例扣1分、通报批评每例扣2分、诫勉谈话的每例扣3分、纪律处分的每例扣5分', 
+    description: '将纪律挺在前面，因工作、作风、廉政等问题，当年受到市公路中心党委约谈或提醒谈话的每例扣 0.5 分、书面检查每例扣 1 分、通报批评每例扣 2 分、诫勉谈话的每例 扣 3 分、纪律处分的每例扣 5 分。', 
     severity: 'low',
     levels: [
       { type: '约谈或提醒谈话', score: -0.5, severity: 'low' },
@@ -385,37 +385,12 @@ const DisciplineScore: React.FC<DisciplineScoreProps> = ({ readonly = false, cur
     setTrendData(trendArray);
   };
 
-  const getSeverityTag = (reason: string) => {
-    const standard = DISCIPLINE_STANDARDS.find(s => reason?.includes(s.type));
-    if (!standard) return null;
-    
-    const severityText = {
-      low: '轻微',
-      medium: '一般',
-      high: '严重',
-      critical: '重大'
-    };
 
-    return (
-      <Tag color={SEVERITY_COLORS[standard.severity as keyof typeof SEVERITY_COLORS]}>
-        {severityText[standard.severity as keyof typeof severityText]}
-      </Tag>
-    );
-  };
 
   // 响应式列配置
   const getResponsiveColumns = (): ColumnsType<ScoreRecord> => {
     const baseColumns: ColumnsType<ScoreRecord> = [
-      {
-        title: '姓名',
-        dataIndex: ['user', 'name'],
-        key: 'userName',
-        width: 120,
-        fixed: 'left',
-        sorter: (a, b) => (a.user?.name || '').localeCompare(b.user?.name || ''),
-        sortOrder: sortedInfo.columnKey === 'userName' ? sortedInfo.order : null,
-        responsive: ['xs', 'sm', 'md', 'lg', 'xl']
-      },
+
 
       {
         title: '违纪时间',
@@ -459,23 +434,7 @@ const DisciplineScore: React.FC<DisciplineScoreProps> = ({ readonly = false, cur
         sortOrder: sortedInfo.columnKey === 'score' ? sortedInfo.order : null,
         responsive: ['xs', 'sm', 'md', 'lg', 'xl']
       },
-      {
-        title: '严重程度',
-        key: 'severity',
-        width: 120,
-        render: (_, record) => getSeverityTag(record.reason),
-        filters: [
-          { text: '轻微', value: 'low' },
-          { text: '一般', value: 'medium' },
-          { text: '严重', value: 'high' },
-          { text: '重大', value: 'critical' }
-        ],
-        onFilter: (value, record) => {
-          const standard = DISCIPLINE_STANDARDS.find(s => record.reason?.includes(s.type));
-          return standard?.severity === value;
-        },
-        responsive: ['sm', 'md', 'lg', 'xl']
-      },
+
 
 
     ];
@@ -515,57 +474,7 @@ const DisciplineScore: React.FC<DisciplineScoreProps> = ({ readonly = false, cur
     });
   }
 
-  // 展开行渲染函数
-  const expandedRowRender = (record: ScoreRecord) => {
-    const standard = DISCIPLINE_STANDARDS.find(s => record.reason?.includes(s.type));
-    
-    return (
-      <div className="bg-gray-50 p-4 rounded-lg">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <h4 className="font-semibold text-gray-700 mb-2">违纪详情</h4>
-            <div className="space-y-2">
-              <div className="flex items-center">
-                <span className="text-gray-600 w-20">完整原因:</span>
-                <span className="text-gray-800">{record.reason}</span>
-              </div>
-              <div className="flex items-center">
-                <span className="text-gray-600 w-20">扣分标准:</span>
-                <span className="text-gray-800">{standard?.description || '未找到对应标准'}</span>
-              </div>
-              <div className="flex items-center">
-                <span className="text-gray-600 w-20">标准分值:</span>
-                <span className="text-gray-800">{standard?.score}分</span>
-              </div>
-            </div>
-          </div>
-          <div>
-            <h4 className="font-semibold text-gray-700 mb-2">处理信息</h4>
-            <div className="space-y-2">
-              <div className="flex items-center">
-                <span className="text-gray-600 w-20">录入时间:</span>
-                <span className="text-gray-800">{dayjs(record.created_at).format('YYYY年MM月DD日 HH:mm:ss')}</span>
-              </div>
 
-            </div>
-          </div>
-        </div>
-        {standard && (
-          <div className="mt-4 p-3 bg-blue-50 rounded border-l-4 border-blue-400">
-            <div className="flex items-center">
-              <span className="text-blue-600 font-medium">改进建议: </span>
-              <span className="text-blue-800 ml-2">
-                {standard.severity === 'critical' && '此为重大违纪，建议立即整改并加强相关培训'}
-                {standard.severity === 'high' && '此为严重违纪，建议认真反思并制定改进计划'}
-                {standard.severity === 'medium' && '请注意相关规定，避免类似情况再次发生'}
-                {standard.severity === 'low' && '轻微违纪，请注意日常行为规范'}
-              </span>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
 
   const handleAdd = () => {
     setEditingRecord(null);
@@ -657,17 +566,17 @@ const DisciplineScore: React.FC<DisciplineScoreProps> = ({ readonly = false, cur
 
       {/* 统计卡片 */}
       <Row gutter={16} className="mb-4">
-        <Col span={4} offset={2}>
+        <Col span={8}>
           <Card>
             <Statistic title="总记录数" value={statistics.totalRecords} />
           </Card>
         </Col>
-        <Col span={4}>
+        <Col span={8}>
           <Card>
             <Statistic title="总扣分" value={statistics.totalDeduction} precision={1} suffix="分" valueStyle={{ color: '#cf1322' }} />
           </Card>
         </Col>
-        <Col span={4}>
+        <Col span={8}>
           <Card>
             <Statistic 
               title="净得分" 
@@ -678,16 +587,7 @@ const DisciplineScore: React.FC<DisciplineScoreProps> = ({ readonly = false, cur
             />
           </Card>
         </Col>
-        <Col span={4}>
-          <Card>
-            <Statistic title="重大违纪" value={statistics.criticalCount} suffix="起" valueStyle={{ color: '#cf1322' }} />
-          </Card>
-        </Col>
-        <Col span={4}>
-          <Card>
-            <Statistic title="严重违纪" value={statistics.highCount} suffix="起" valueStyle={{ color: '#fa8c16' }} />
-          </Card>
-        </Col>
+
       </Row>
 
         {/* 个人改善建议 */}
@@ -733,292 +633,64 @@ const DisciplineScore: React.FC<DisciplineScoreProps> = ({ readonly = false, cur
           </Card>
         )}
 
-        {/* 纪律记录趋势分析 - 响应式布局 */}
-      <Row gutter={16} className="mb-4">
-        <Col span={24}>
-          <Card 
-            title={
-              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center space-y-2 sm:space-y-0">
-                <div className="flex items-center">
-                  <BarChartOutlined className="mr-2 text-blue-500" />
-                  <span className="text-sm sm:text-base">纪律记录趋势分析</span>
-                </div>
-                <Select
-                  value={trendPeriod}
-                  onChange={setTrendPeriod}
-                  size="small"
-                  className="w-full sm:w-24"
-                >
-                  <Option value="month">按月</Option>
-                  <Option value="quarter">按季度</Option>
-                </Select>
-              </div>
-            }
-            size="small"
-          >
-            {trendData.length > 0 ? (
-              <Row gutter={[16, 16]}>
-                <Col xs={24} lg={12}>
-                  <div className="mb-2 text-xs sm:text-sm font-medium text-gray-600">违纪次数趋势</div>
-                  <ResponsiveContainer width="100%" height={window.innerWidth < 768 ? 160 : 200}>
-                    <LineChart data={trendData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                      <XAxis 
-                        dataKey="period" 
-                        tick={{ fontSize: 11 }}
-                        interval={window.innerWidth < 768 ? 'preserveStartEnd' : 0}
-                      />
-                      <YAxis tick={{ fontSize: 11 }} />
-                      <RechartsTooltip 
-                        contentStyle={{ 
-                          fontSize: '11px',
-                          border: '1px solid #d9d9d9',
-                          borderRadius: '4px'
-                        }}
-                      />
-                      <Legend 
-                        wrapperStyle={{ fontSize: '11px' }}
-                        iconSize={window.innerWidth < 768 ? 10 : 12}
-                      />
-                      <Line 
-                        type="monotone" 
-                        dataKey="totalRecords" 
-                        stroke="#1890ff" 
-                        name="总次数"
-                        strokeWidth={2}
-                      />
-                      <Line 
-                        type="monotone" 
-                        dataKey="criticalCount" 
-                        stroke="#f5222d" 
-                        name="重大"
-                        strokeWidth={1.5}
-                      />
-                      <Line 
-                        type="monotone" 
-                        dataKey="highCount" 
-                        stroke="#fa8c16" 
-                        name="严重"
-                        strokeWidth={1.5}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </Col>
-                <Col xs={24} lg={12}>
-                  <div className="mb-2 text-xs sm:text-sm font-medium text-gray-600">扣分趋势</div>
-                  <ResponsiveContainer width="100%" height={window.innerWidth < 768 ? 160 : 200}>
-                    <BarChart data={trendData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                      <XAxis 
-                        dataKey="period" 
-                        tick={{ fontSize: 11 }}
-                        interval={window.innerWidth < 768 ? 'preserveStartEnd' : 0}
-                      />
-                      <YAxis tick={{ fontSize: 11 }} />
-                      <RechartsTooltip 
-                        contentStyle={{ 
-                          fontSize: '11px',
-                          border: '1px solid #d9d9d9',
-                          borderRadius: '4px'
-                        }}
-                      />
-                      <Legend 
-                        wrapperStyle={{ fontSize: '11px' }}
-                        iconSize={window.innerWidth < 768 ? 10 : 12}
-                      />
-                      <Bar 
-                        dataKey="totalDeduction" 
-                        fill="#ff4d4f" 
-                        name="总扣分"
-                      />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </Col>
-              </Row>
-            ) : (
-              <div className="text-center py-6 sm:py-8 text-gray-500">
-                <BarChartOutlined className="text-2xl sm:text-4xl mb-2" />
-                <div className="text-sm sm:text-base">暂无数据，请调整筛选条件</div>
-              </div>
-            )}
-          </Card>
-        </Col>
-      </Row>
+
 
       {/* 纪律积分标准说明 */}
       <Row gutter={16} className="mb-4">
         <Col span={24}>
           <Card size="small" title={<><ExclamationCircleOutlined className="mr-2 text-red-500" />纪律扣分标准</>}>
-            <Row gutter={[16, 8]}>
+            <Row gutter={[16, 8]} style={{ alignItems: 'stretch' }}>
               {DISCIPLINE_STANDARDS.map((standard, index) => (
-                <Col span={8} key={index}>
-                  <div className="flex items-center mb-1">
-                    <Tag color={SEVERITY_COLORS[standard.severity as keyof typeof SEVERITY_COLORS]} className="mr-2">
-                      {standard.type}: {Math.abs(standard.score)}分
-                    </Tag>
-                  </div>
-                  <div className="text-xs text-gray-500">{standard.description}</div>
+                <Col xs={24} sm={12} md={8} key={index} style={{ display: 'flex' }}>
+                  <Card 
+                    size="small" 
+                    hoverable
+                    style={{ border: '1px solid #d9d9d9', backgroundColor: '#fafafa', borderRadius: 8, boxShadow: '0 1px 6px rgba(0,0,0,0.06)', height: '100%', display: 'flex', flexDirection: 'column' }}
+                  >
+                    <div style={{ marginBottom: 8 }}>
+                      <Space>
+                        <Tag color={SEVERITY_COLORS[standard.severity as keyof typeof SEVERITY_COLORS]}>
+                          {standard.type}
+                        </Tag>
+                      </Space>
+                    </div>
+
+                    <div style={{ marginBottom: 8 }}>
+                      <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                        <div style={{ fontSize: '12px', color: '#666' }}>
+                          标准扣分: <strong>{Math.abs(standard.score)} 分/次</strong>
+                        </div>
+                        {standard.severeCases && (
+                          <div style={{ fontSize: '12px', color: '#cf1322' }}>
+                            严重情形: <strong>{Math.abs(standard.severeCases.score)} 分/次</strong>
+                          </div>
+                        )}
+                        {standard.levels && standard.levels.length > 0 && (
+                          <div style={{ fontSize: '12px', color: '#666' }}>
+                            分级标准：
+                          </div>
+                        )}
+                        {standard.levels && standard.levels.map((lvl, idx) => (
+                          <div key={idx} style={{ fontSize: '12px', color: '#666' }}>
+                            <Tag color={SEVERITY_COLORS[lvl.severity as keyof typeof SEVERITY_COLORS]} style={{ marginRight: 8 }}>{lvl.type}</Tag>
+                            <strong>{Math.abs(lvl.score)} 分/次</strong>
+                          </div>
+                        ))}
+                      </Space>
+                    </div>
+
+                    <div style={{ fontSize: '11px', color: '#999', lineHeight: '1.3' }}>
+                      {standard.description}
+                    </div>
+                  </Card>
                 </Col>
               ))}
             </Row>
           </Card>
         </Col>
-
       </Row>
 
-      {/* 筛选条件 */}
-      <Card className="mb-4" size="small">
-        {/* 快速筛选按钮 */}
-        <div className="mb-3">
-          <div className="flex items-center mb-2">
-            <span className="text-gray-600 font-medium mr-3">快速筛选：</span>
-            <Space wrap>
-              <Button 
-                size="small" 
-                type={severityFilter === 'critical' ? 'primary' : 'default'}
-                danger={severityFilter === 'critical'}
-                onClick={() => setSeverityFilter(severityFilter === 'critical' ? undefined : 'critical')}
-              >
-                重大违纪
-              </Button>
-              <Button 
-                size="small" 
-                type={severityFilter === 'high' ? 'primary' : 'default'}
-                onClick={() => setSeverityFilter(severityFilter === 'high' ? undefined : 'high')}
-              >
-                严重违纪
-              </Button>
-              <Button 
-                size="small" 
-                type={dateRange && dayjs().subtract(7, 'day').isSame(dateRange[0], 'day') ? 'primary' : 'default'}
-                onClick={() => {
-                  const now = dayjs();
-                  const weekAgo = now.subtract(7, 'day');
-                  setDateRange([weekAgo, now]);
-                }}
-              >
-                近7天
-              </Button>
-              <Button 
-                size="small" 
-                type={dateRange && dayjs().subtract(30, 'day').isSame(dateRange[0], 'day') ? 'primary' : 'default'}
-                onClick={() => {
-                  const now = dayjs();
-                  const monthAgo = now.subtract(30, 'day');
-                  setDateRange([monthAgo, now]);
-                }}
-              >
-                近30天
-              </Button>
-              <Button 
-                size="small" 
-                type={dateRange && dayjs().startOf('month').isSame(dateRange[0], 'day') ? 'primary' : 'default'}
-                onClick={() => {
-                  const now = dayjs();
-                  const monthStart = now.startOf('month');
-                  setDateRange([monthStart, now]);
-                }}
-              >
-                本月
-              </Button>
-              <Button 
-                size="small" 
-                onClick={() => {
-                  setSeverityFilter(undefined);
-                  setDateRange(null);
-                  setSelectedUser(undefined);
-                }}
-              >
-                清除筛选
-              </Button>
-              <Button 
-                size="small" 
-                onClick={() => setSortedInfo({ columnKey: 'created_at', order: 'descend' })}
-              >
-                重置排序
-              </Button>
-            </Space>
-          </div>
-        </div>
-        
-        {/* 详细筛选选项 - 响应式布局 */}
-        <Row gutter={[16, 16]} align="middle">
-          {!currentUserId && (
-            <Col xs={24} sm={12} md={8} lg={6}>
-              <div className="flex flex-col sm:flex-row sm:items-center">
-                <span className="mb-1 sm:mb-0 sm:mr-2 text-sm font-medium">人员筛选：</span>
-                <Select
-                  placeholder="选择人员"
-                  allowClear
-                  value={selectedUser}
-                  onChange={setSelectedUser}
-                  className="flex-1 min-w-0"
-                  showSearch
-                  optionFilterProp="children"
-                  size="small"
-                >
-                  {users.map(user => (
-                    <Option key={user.id} value={user.id}>{user.name}</Option>
-                  ))}
-                </Select>
-              </div>
-            </Col>
-          )}
-          <Col xs={24} sm={12} md={8} lg={currentUserId ? 8 : 6}>
-            <div className="flex flex-col sm:flex-row sm:items-center">
-              <span className="mb-1 sm:mb-0 sm:mr-2 text-sm font-medium">严重程度：</span>
-              <Select
-                placeholder="选择严重程度"
-                allowClear
-                value={severityFilter}
-                onChange={setSeverityFilter}
-                className="flex-1 min-w-0"
-                size="small"
-              >
-                <Option value="low">轻微</Option>
-                <Option value="medium">一般</Option>
-                <Option value="high">严重</Option>
-                <Option value="critical">重大</Option>
-              </Select>
-            </div>
-          </Col>
-          <Col xs={24} sm={12} md={8} lg={currentUserId ? 8 : 6}>
-            <div className="flex flex-col sm:flex-row sm:items-center">
-              <span className="mb-1 sm:mb-0 sm:mr-2 text-sm font-medium">时间范围：</span>
-              <RangePicker
-                value={dateRange}
-                onChange={setDateRange}
-                className="flex-1 min-w-0"
-                size="small"
-                presets={[
-                  { label: '今天', value: [dayjs().startOf('day'), dayjs().endOf('day')] },
-                  { label: '昨天', value: [dayjs().subtract(1, 'day').startOf('day'), dayjs().subtract(1, 'day').endOf('day')] },
-                  { label: '本周', value: [dayjs().startOf('week'), dayjs().endOf('week')] },
-                  { label: '上周', value: [dayjs().subtract(1, 'week').startOf('week'), dayjs().subtract(1, 'week').endOf('week')] },
-                  { label: '本月', value: [dayjs().startOf('month'), dayjs().endOf('month')] },
-                  { label: '上月', value: [dayjs().subtract(1, 'month').startOf('month'), dayjs().subtract(1, 'month').endOf('month')] }
-                ]}
-              />
-            </div>
-          </Col>
-          <Col xs={24} sm={12} md={8} lg={currentUserId ? 8 : 6}>
-            <div className="flex justify-center sm:justify-end">
-              {!readonly && (
-                <Button 
-                  type="primary" 
-                  icon={<PlusOutlined />} 
-                  onClick={handleAdd}
-                  size="small"
-                  className="w-full sm:w-auto"
-                >
-                  <span className="hidden sm:inline">添加纪律积分</span>
-                  <span className="sm:hidden">添加积分</span>
-                </Button>
-              )}
-            </div>
-          </Col>
-        </Row>
-      </Card>
+
 
       {/* 数据表格 */}
       <Spin spinning={loading}>
@@ -1027,20 +699,7 @@ const DisciplineScore: React.FC<DisciplineScoreProps> = ({ readonly = false, cur
           dataSource={scoreRecords}
           rowKey="id"
           onChange={handleTableChange}
-          expandable={{
-            expandedRowRender,
-            expandIcon: ({ expanded, onExpand, record }) => (
-              <Button
-                type="text"
-                size="small"
-                icon={expanded ? <MinusOutlined /> : <PlusOutlined />}
-                onClick={e => onExpand(record, e)}
-                className="text-blue-500 hover:text-blue-700"
-              />
-            ),
-            expandRowByClick: false,
-            indentSize: 0
-          }}
+
           pagination={{ 
             pageSize: 10,
             showSizeChanger: true,
@@ -1167,7 +826,7 @@ const DisciplineScore: React.FC<DisciplineScoreProps> = ({ readonly = false, cur
                     type={standard.severity === 'critical' ? 'primary' : 'default'}
                   >
                     <div>
-                      <div className="font-medium">{standard.type} ({Math.abs(standard.score)}分)</div>
+                      <div className="font-medium">{standard.type} ({Math.abs(standard.score)} 分)</div>
                       <div className="text-xs opacity-75">{standard.description}</div>
                     </div>
                   </Button>

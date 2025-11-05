@@ -63,7 +63,7 @@ const BasicDutyScore: React.FC = () => {
     disciplineAvg: 0
   });
   
-  const { user: currentUser } = useAuthStore();
+  const { user: currentUser, hasPermission } = useAuthStore();
 
   // 加载数据
   useEffect(() => {
@@ -149,7 +149,7 @@ const BasicDutyScore: React.FC = () => {
     return options;
   };
 
-  const columns: ColumnsType<BasicDutyScoreRecord> = [
+  const baseColumns: ColumnsType<BasicDutyScoreRecord> = [
     {
       title: '姓名',
       dataIndex: ['user', 'name'],
@@ -212,28 +212,34 @@ const BasicDutyScore: React.FC = () => {
       width: 120,
       fixed: 'right',
       render: (_, record) => (
-        <Space size="small">
-          <Button
-            type="link"
-            size="small"
-            icon={<EditOutlined />}
-            onClick={() => handleEdit(record)}
-          >
-            编辑
-          </Button>
-          <Button
-            type="link"
-            size="small"
-            danger
-            icon={<DeleteOutlined />}
-            onClick={() => handleDelete(record.id)}
-          >
-            删除
-          </Button>
-        </Space>
+        hasPermission('write') ? (
+          <Space size="small">
+            <Button
+              type="link"
+              size="small"
+              icon={<EditOutlined />}
+              onClick={() => handleEdit(record)}
+            >
+              编辑
+            </Button>
+            <Button
+              type="link"
+              size="small"
+              danger
+              icon={<DeleteOutlined />}
+              onClick={() => handleDelete(record.id)}
+            >
+              删除
+            </Button>
+          </Space>
+        ) : null
       )
     }
   ];
+
+  const columns: ColumnsType<BasicDutyScoreRecord> = hasPermission('write')
+    ? baseColumns
+    : baseColumns.filter(col => col.key !== 'action');
 
   const handleAdd = () => {
     setEditingRecord(null);
@@ -583,24 +589,29 @@ const BasicDutyScore: React.FC = () => {
       </Row>
 
       {/* 主要内容 */}
-      <Card title="基本职责积分管理">
+      <Card>
         <div className="mb-4 flex justify-between items-center">
           <Space>
-            <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
-              添加积分记录
-            </Button>
+            {hasPermission('write') && (
+              <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
+                添加积分记录
+              </Button>
+            )}
             <Upload
               accept=".xlsx,.xls,.csv"
               beforeUpload={handleFileUpload}
               showUploadList={false}
+              disabled={!hasPermission('write')}
             >
-              <Button icon={<UploadOutlined />}>
+              <Button icon={<UploadOutlined />} disabled={!hasPermission('write')}>
                 批量导入
               </Button>
             </Upload>
-            <Button icon={<DownloadOutlined />} onClick={downloadTemplate}>
-              下载模板
-            </Button>
+            {hasPermission('write') && (
+              <Button icon={<DownloadOutlined />} onClick={downloadTemplate}>
+                下载模板
+              </Button>
+            )}
           </Space>
           <Space>
             <span>考核期间：</span>
@@ -730,7 +741,7 @@ const BasicDutyScore: React.FC = () => {
             type="primary"
             loading={importLoading}
             onClick={handleBatchImport}
-            disabled={importData.filter(item => item.valid.isValid).length === 0}
+            disabled={!hasPermission('write') || importData.filter(item => item.valid.isValid).length === 0}
           >
             导入数据 ({importData.filter(item => item.valid.isValid).length}条)
           </Button>
