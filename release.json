@@ -1,0 +1,8 @@
+{
+  "tag_name": "v2.0.1",
+  "name": "v2.0.1",
+  "target_commitish": "main",
+  "draft": false,
+  "prerelease": false,
+  "body": "# 积分制系统 v2.0.0 发布说明\n\n## 项目概述\n积分制系统用于管理学习积分与行为积分，支持批量处理、统计展示与权限控制，面向学校/培训/企业内部学习场景。此版本在交互体验与模块边界上做了全面优化。\n\n## 主要功能模块\n- 学习积分：记录课程学习、考试成绩、作业完成度等，支持快速加减分与批量导入。\n- 行为积分管理：记录日常行为（出勤、纪律、志愿服务等），支持规则化配置与异常处理。\n\n## 技术架构\n- 前端：React + TypeScript + Vite + Ant Design\n- 状态与数据：Supabase 作为后端服务与鉴权；Tailwind/PostCSS 配合样式。\n- 部署：Vercel（参考 `vercel.json`），本地开发 `npm run dev`。\n\n## 功能特性\n- 快速选择：在表单中提供“快速选择”组件，便于按班级/课程/维度快速筛选（示例：`LearningScore.tsx` 中的表单项）。\n- 批量操作：支持批量加分/扣分、CSV/Excel 导入导出。\n- 统计展示：积分排名、趋势图与维度对比，支持筛选与导出。\n\n## 安全建议\n- 使用细粒度 GitHub PAT，仅授予 `repo` 相关权限；操作后及时撤销或轮换。\n- 前端环境变量中不要保存敏感凭据；只在服务端或安全环境中使用密钥。\n- 对用户操作（加减分、批量处理）进行审计与权限校验。\n\n## 版本信息\n- 标签：v2.0.0\n- 分支：main\n- 提交：chore(release): 2.0.0\n\n## 安装说明\n- 本地开发：\n  1. `npm i`\n  2. 配置 `.env` 中的 `VITE_SUPABASE_URL` 与 `VITE_SUPABASE_ANON_KEY`\n  3. `npm run dev`，访问 `http://localhost:5173/`\n- 生产部署：参考 `vercel.json` 与 Supabase 项目配置。\n\n## 后续计划\n- 细化行为积分规则与告警策略。\n- 增加积分兑换、奖惩通知与消息推送。\n- 优化移动端适配与可访问性。\n- 引入更完善的测试与监控指标。\n"
+}
