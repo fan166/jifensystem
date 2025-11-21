@@ -54,7 +54,25 @@ export const PermissionSettings: React.FC = () => {
       setAnnualEnabled(Boolean(map['annual_evaluation_visible']?.is_enabled));
     } catch (error) {
       console.error('获取权限设置失败:', error);
-      toast.error('获取权限设置失败');
+      // 缺表降级：提供只读的默认状态，并提示管理员需要执行数据库迁移
+      const fallback: Record<string, PermissionSetting> = {
+        daily_evaluation_visible: {
+          setting_key: 'daily_evaluation_visible',
+          is_enabled: false,
+          target_roles: ['employee'],
+          description: '普通用户日常实绩评价界面可见性（缺表降级：默认禁用）'
+        },
+        annual_evaluation_visible: {
+          setting_key: 'annual_evaluation_visible',
+          is_enabled: false,
+          target_roles: ['employee'],
+          description: '普通用户年终集体测评界面可见性（缺表降级：默认禁用）'
+        }
+      };
+      setRecords(fallback);
+      setDailyEnabled(false);
+      setAnnualEnabled(false);
+      toast.warning('权限设置表缺失或不可用，已使用默认禁用。请执行数据库迁移创建 permission_settings 表。');
     } finally {
       setLoading(false);
     }
@@ -86,7 +104,8 @@ export const PermissionSettings: React.FC = () => {
       toast.success('权限设置已更新');
     } catch (error) {
       console.error('更新权限设置失败:', error);
-      toast.error('更新权限设置失败');
+      // 如果后端缺表，提示管理员执行迁移
+      toast.error('更新权限设置失败。请检查数据库是否已创建 permission_settings 表并配置RLS策略。');
     } finally {
       setSavingKey(null);
     }

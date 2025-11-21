@@ -41,14 +41,14 @@ export const useAuthStore = create<AuthState>()(persist(
         
         if (user) {
           const roleMapping = {
-            'admin': 'system_admin',
-            'manager': 'assessment_admin',
-            'employee': 'employee'
-          };
+            admin: 'system_admin',
+            manager: 'assessment_admin',
+            employee: 'employee'
+          } as const;
           
           const mappedUser = {
             ...user,
-            role: roleMapping[user.role as keyof typeof roleMapping] || user.role
+            role: (roleMapping as any)[user.role] || user.role
           } as User;
 
           set({ 
@@ -123,10 +123,10 @@ export const useAuthStore = create<AuthState>()(persist(
           
           // 角色映射
           const roleMapping = {
-            'admin': 'system_admin',
-            'manager': 'assessment_admin',
-            'employee': 'employee'
-          };
+            admin: 'system_admin',
+            manager: 'assessment_admin',
+            employee: 'employee'
+          } as const;
 
           const mappedUser = {
             id: supabaseUser.id,

@@ -280,7 +280,7 @@ const BasicDutyScore: React.FC<BasicDutyScoreProps> = ({ readonly = false }) => 
           {
             key: 'learning',
         label: <span><BookOutlined />基础学习</span>,
-            children: <LearningScore readonly={!canEdit} currentUserId={isEmployee ? user?.id : undefined} />
+            children: <LearningScore readonly={!canEdit} />
           },
           {
             key: 'discipline',

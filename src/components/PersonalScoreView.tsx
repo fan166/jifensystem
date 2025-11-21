@@ -64,7 +64,7 @@ export const PersonalScoreView: React.FC = () => {
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const { user } = useAuth();
-  const { hasPermission } = useDynamicPermissionCheck();
+  const { hasPermission } = useDynamicPermissionCheck('view_personal_scores');
   const [canViewPersonalScores, setCanViewPersonalScores] = useState(false);
 
   useEffect(() => {
@@ -78,8 +78,8 @@ export const PersonalScoreView: React.FC = () => {
   }, [canViewPersonalScores, user, selectedPeriod]);
 
   const checkPermissions = async () => {
-    const canView = await hasPermission('view_personal_scores');
-    setCanViewPersonalScores(canView);
+    const canView = await hasPermission;
+    setCanViewPersonalScores(Boolean(canView));
   };
 
   const fetchFinalScores = async () => {

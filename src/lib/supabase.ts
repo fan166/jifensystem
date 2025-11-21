@@ -14,7 +14,7 @@ export interface User {
   id: string;
   email: string;
   name: string;
-  role: 'system_admin' | 'assessment_admin' | 'employee';
+  role: 'system_admin' | 'assessment_admin' | 'employee' | 'leader' | 'evaluator';
   department_id?: string;
   department?: { name: string };
   position?: string;

@@ -230,6 +230,7 @@ export const useRoleCheck = () => {
 
   return {
     user,
+    userRole: user?.role || null,
     loading: isLoading,
     error,
     isAdmin,

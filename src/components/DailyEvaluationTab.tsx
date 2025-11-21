@@ -115,7 +115,7 @@ export const DailyEvaluationTab: React.FC = () => {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [editingEvaluation, setEditingEvaluation] = useState<DailyEvaluation | null>(null);
   const { user } = useAuth();
-  const { hasPermission } = useDynamicPermissionCheck();
+  const { hasPermission } = useDynamicPermissionCheck('view_daily_evaluation');
   const { userRole, isAdmin, isLeader } = useRoleCheck();
   const { dailyVisible } = useEvaluationVisibility();
   const [permissions, setPermissions] = useState({
@@ -183,9 +183,15 @@ export const DailyEvaluationTab: React.FC = () => {
       if (error) throw error;
       
       // 转换数据格式，确保department字段正确
-      const formattedUsers = (data || []).map(user => ({
-        ...user,
-        department: user.department?.name || '未分配部门'
+      type RawUser = { id: string; name: string; role: string; department?: { name: string } | { name: string }[] };
+      const rawUsers = (data || []) as RawUser[];
+      const formattedUsers = rawUsers.map(u => ({
+        id: u.id,
+        name: u.name,
+        role: u.role,
+        department: Array.isArray(u.department)
+          ? (u.department[0]?.name ?? '未分配部门')
+          : (u.department?.name ?? '未分配部门')
       }));
       
       setUsers(formattedUsers);

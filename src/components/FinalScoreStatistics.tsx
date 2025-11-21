@@ -69,7 +69,7 @@ export const FinalScoreStatistics: React.FC = () => {
   const [selectedDepartment, setSelectedDepartment] = useState('all');
   const [departments, setDepartments] = useState<string[]>([]);
   const { user } = useAuth();
-  const { hasPermission } = useDynamicPermissionCheck();
+  const { hasPermission } = useDynamicPermissionCheck('calculate_final_scores');
   const { userRole, isAdmin } = useRoleCheck();
   const [permissions, setPermissions] = useState({
     canView: false,
@@ -89,8 +89,8 @@ export const FinalScoreStatistics: React.FC = () => {
 
   const checkPermissions = async () => {
     const [canCalculate, canExport] = await Promise.all([
-      hasPermission('calculate_final_scores'),
-      hasPermission('export_final_scores')
+      hasPermission,
+      (await useDynamicPermissionCheck('export_final_scores')).hasPermission
     ]);
 
     setPermissions({

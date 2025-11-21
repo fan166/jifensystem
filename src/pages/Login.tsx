@@ -16,6 +16,26 @@ export default function Login() {
   const navigate = useNavigate();
   const { setUser } = useAuthStore();
 
+  // 解析账号为邮箱（支持输入用户名）
+  const resolveEmail = async (id: string): Promise<string> => {
+    if (id.includes('@')) return id.trim();
+    const { data: byName } = await supabase
+      .from('users')
+      .select('email, name')
+      .eq('name', id.trim())
+      .limit(1)
+      .maybeSingle();
+    if (byName?.email) return byName.email;
+    const { data: byEmail } = await supabase
+      .from('users')
+      .select('email')
+      .eq('email', id.trim())
+      .limit(1)
+      .maybeSingle();
+    if (byEmail?.email) return byEmail.email;
+    return id.trim();
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!identifier || !password) {
@@ -25,25 +45,6 @@ export default function Login() {
 
     setLoading(true);
     try {
-      // 解析账号为邮箱（支持输入用户名）
-      const resolveEmail = async (id: string): Promise<string> => {
-        if (id.includes('@')) return id.trim();
-        const { data: byName } = await supabase
-          .from('users')
-          .select('email, name')
-          .eq('name', id.trim())
-          .limit(1)
-          .maybeSingle();
-        if (byName?.email) return byName.email;
-        const { data: byEmail } = await supabase
-          .from('users')
-          .select('email')
-          .eq('email', id.trim())
-          .limit(1)
-          .maybeSingle();
-        if (byEmail?.email) return byEmail.email;
-        return id.trim();
-      };
 
       const email = await resolveEmail(identifier);
 
@@ -62,10 +63,10 @@ export default function Login() {
         
         // 角色映射
         const roleMapping = {
-          'admin': 'system_admin',
-          'manager': 'assessment_admin',
-          'employee': 'employee'
-        };
+          admin: 'system_admin',
+          manager: 'assessment_admin',
+          employee: 'employee'
+        } as const;
 
         const mappedUser = {
           id: data.user.id,
@@ -77,7 +78,7 @@ export default function Login() {
         };
 
         // 设置用户状态
-        setUser(mappedUser);
+        setUser(mappedUser as any);
         
         // 清除可能存在的临时用户数据
         localStorage.removeItem('temp_user');
@@ -112,9 +113,9 @@ export default function Login() {
 
         if (demo && password === demo.password) {
           const roleMapping = {
-            'admin': 'system_admin',
-            'manager': 'assessment_admin',
-            'employee': 'employee'
+            admin: 'system_admin',
+            manager: 'assessment_admin',
+            employee: 'employee'
           } as const;
 
           const tempUser = {
@@ -149,14 +150,16 @@ export default function Login() {
         id: 'temp-user-id',
         email: 'admin@example.com',
         name: '管理员',
-        role: 'system_admin'
+        role: 'system_admin',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       };
       
       // 存储到localStorage作为临时解决方案
       localStorage.setItem('temp_user', JSON.stringify(tempUser));
       
       // 同时设置到Zustand store中
-      setUser(tempUser);
+      setUser(tempUser as any);
       
       toast.success('临时登录成功');
       navigate('/');

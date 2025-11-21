@@ -1,12 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy } from 'react';
 import { Card, Tabs, Alert } from 'antd';
 import { UserOutlined, TeamOutlined, BarChartOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../stores/authStore';
 import { useEvaluationVisibility } from '../hooks/useEvaluationVisibility';
-import { PersonalScoreView } from '../components/PersonalScoreView';
-import { DailyEvaluationTab } from '../components/DailyEvaluationTab';
-import { AnnualEvaluationTab } from '../components/AnnualEvaluationTab';
-import { FinalScoreStatistics } from '../components/FinalScoreStatistics';
+// 懒加载大型组件（命名导出需要映射为默认导出）
+const PersonalScoreView = lazy(() => import('../components/PersonalScoreView').then(m => ({ default: m.PersonalScoreView })));
+const DailyEvaluationTab = lazy(() => import('../components/DailyEvaluationTab').then(m => ({ default: m.DailyEvaluationTab })));
+const AnnualEvaluationTab = lazy(() => import('../components/AnnualEvaluationTab').then(m => ({ default: m.AnnualEvaluationTab })));
+const FinalScoreStatistics = lazy(() => import('../components/FinalScoreStatistics').then(m => ({ default: m.FinalScoreStatistics })));
 
 const PerformanceEvaluationPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState('daily');
@@ -16,6 +17,7 @@ const PerformanceEvaluationPage: React.FC = () => {
   // 基于用户角色的权限检查
   const isAdmin = user?.role === 'system_admin';
   const isManager = user?.role === 'assessment_admin';
+  const isLeader = user?.role === 'leader';
   const hasAdminAccess = isAdmin || isManager;
   
   // 调试信息
@@ -35,7 +37,7 @@ const PerformanceEvaluationPage: React.FC = () => {
     const items = [];
 
     // 日常实绩评价 - 管理员和领导可以评价他人
-    if (hasAdminAccess || user?.role === 'leader') {
+    if (hasAdminAccess || isLeader) {
       items.push({
         key: 'daily',
         label: (
@@ -77,7 +79,7 @@ const PerformanceEvaluationPage: React.FC = () => {
     }
 
     // 年终集体测评 - 普通用户可见性受开关控制；管理员和领导不受影响
-    if (hasAdminAccess || user?.role === 'leader' || (user?.role === 'employee' && annualVisible)) {
+    if (hasAdminAccess || isLeader || (user?.role === 'employee' && annualVisible)) {
       items.push({
         key: 'annual',
         label: (
@@ -117,7 +119,7 @@ const PerformanceEvaluationPage: React.FC = () => {
       const fallback = items[0]?.key || (!isAdmin ? 'personal' : undefined);
       if (fallback) setActiveTab(fallback);
     }
-  }, [dailyVisible, annualVisible, user?.role]);
+  }, [dailyVisible, annualVisible, user?.role, isLeader]);
 
   // 检查认证状态
   if (!isAuthenticated) {

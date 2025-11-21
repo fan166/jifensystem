@@ -9,7 +9,7 @@ export const userAPI = {
       .from('users')
       .select(`
         *,
-        department:departments(name)
+        department:departments!users_department_id_fkey(name)
       `)
       .order('created_at', { ascending: false });
     

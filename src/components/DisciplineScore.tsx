@@ -645,11 +645,12 @@ const DisciplineScore: React.FC<DisciplineScoreProps> = ({ readonly = false, cur
                   <Card 
                     size="small" 
                     hoverable
+                    className="floating-card"
                     style={{ border: '1px solid #d9d9d9', backgroundColor: '#fafafa', borderRadius: 8, boxShadow: '0 1px 6px rgba(0,0,0,0.06)', height: '100%', display: 'flex', flexDirection: 'column' }}
                   >
                     <div style={{ marginBottom: 8 }}>
                       <Space>
-                        <Tag color={SEVERITY_COLORS[standard.severity as keyof typeof SEVERITY_COLORS]}>
+                        <Tag color="default">
                           {standard.type}
                         </Tag>
                       </Space>
@@ -672,7 +673,7 @@ const DisciplineScore: React.FC<DisciplineScoreProps> = ({ readonly = false, cur
                         )}
                         {standard.levels && standard.levels.map((lvl, idx) => (
                           <div key={idx} style={{ fontSize: '12px', color: '#666' }}>
-                            <Tag color={SEVERITY_COLORS[lvl.severity as keyof typeof SEVERITY_COLORS]} style={{ marginRight: 8 }}>{lvl.type}</Tag>
+                            <Tag color="default" style={{ marginRight: 8 }}>{lvl.type}</Tag>
                             <strong>{Math.abs(lvl.score)} 分/次</strong>
                           </div>
                         ))}
@@ -689,6 +690,11 @@ const DisciplineScore: React.FC<DisciplineScoreProps> = ({ readonly = false, cur
           </Card>
         </Col>
       </Row>
+
+      <style>{`
+        .floating-card { transition: transform 0.2s ease, box-shadow 0.2s ease; }
+        .floating-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,0,0,0.12); }
+      `}</style>
 
 
 

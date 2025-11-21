@@ -347,11 +347,12 @@ const LearningScore: React.FC<LearningScoreProps> = ({ readonly = false }) => {
                  <Card 
                    size="small" 
                    hoverable
+                   className="floating-card"
                    style={{ border: '1px solid #d9d9d9', backgroundColor: '#fafafa', borderRadius: 8, boxShadow: '0 1px 6px rgba(0,0,0,0.06)', height: '100%', display: 'flex', flexDirection: 'column' }}
                  >
                   <div style={{ marginBottom: 8 }}>
                     <Space>
-                      <Tag color="red">会议缺席</Tag>
+                      <Tag color="default">会议缺席</Tag>
                     </Space>
                   </div>
                   <div style={{ marginBottom: 8 }}>
@@ -371,11 +372,12 @@ const LearningScore: React.FC<LearningScoreProps> = ({ readonly = false }) => {
                  <Card 
                    size="small" 
                    hoverable
+                   className="floating-card"
                    style={{ border: '1px solid #d9d9d9', backgroundColor: '#fafafa', borderRadius: 8, boxShadow: '0 1px 6px rgba(0,0,0,0.06)', height: '100%', display: 'flex', flexDirection: 'column' }}
                  >
                   <div style={{ marginBottom: 8 }}>
                     <Space>
-                      <Tag color="red">学习任务未完成</Tag>
+                      <Tag color="default">学习任务未完成</Tag>
                     </Space>
                   </div>
                   <div style={{ marginBottom: 8 }}>
@@ -395,17 +397,18 @@ const LearningScore: React.FC<LearningScoreProps> = ({ readonly = false }) => {
                  <Card 
                    size="small" 
                    hoverable
+                   className="floating-card"
                    style={{ border: '1px solid #d9d9d9', backgroundColor: '#fafafa', borderRadius: 8, boxShadow: '0 1px 6px rgba(0,0,0,0.06)', height: '100%', display: 'flex', flexDirection: 'column' }}
                  >
                   <div style={{ marginBottom: 8 }}>
                     <Space>
-                      <Tag color="red">学习活动不足60%</Tag>
+                      <Tag color="default">学习活动不足60%</Tag>
                     </Space>
                   </div>
                   <div style={{ marginBottom: 8 }}>
                     <Space direction="vertical" size={4} style={{ width: '100%' }}>
                       <div style={{ fontSize: '12px', color: '#666' }}>
-                        标准扣分: <strong>2分</strong>
+                        标准扣分: <strong>2分/次</strong>
                       </div>
                     </Space>
                   </div>
@@ -581,6 +584,10 @@ const LearningScore: React.FC<LearningScoreProps> = ({ readonly = false }) => {
           </Form.Item>
         </Form>
       </Modal>
+      <style>{`
+        .floating-card { transition: transform 0.2s ease, box-shadow 0.2s ease; }
+        .floating-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,0,0,0.12); }
+      `}</style>
     </div>
   );
 };

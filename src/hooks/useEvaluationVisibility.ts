@@ -32,7 +32,11 @@ export const useEvaluationVisibility = (): EvaluationVisibility => {
       setAnnualVisible(!!map['annual_evaluation_visible']);
     } catch (e) {
       console.error('读取评价可见性失败:', e);
-      setError('读取评价可见性失败');
+      // 后端缺表时降级处理：使用安全默认值，保证前端不崩溃
+      // 默认：日常/年终评价对普通用户不可见（由管理员在权限设置中启用）
+      setDailyVisible(false);
+      setAnnualVisible(false);
+      setError('读取评价可见性失败（已使用默认可见性）');
     } finally {
       setLoading(false);
     }

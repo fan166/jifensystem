@@ -85,25 +85,25 @@ CREATE TABLE IF NOT EXISTS monthly_reward_summary (
 );
 
 -- 创建索引
-CREATE INDEX idx_reward_types_category ON reward_types(category);
-CREATE INDEX idx_reward_types_active ON reward_types(is_active);
+CREATE INDEX IF NOT EXISTS idx_reward_types_category ON reward_types(category);
+CREATE INDEX IF NOT EXISTS idx_reward_types_active ON reward_types(is_active);
 
-CREATE INDEX idx_reward_applications_user ON reward_applications(user_id);
-CREATE INDEX idx_reward_applications_status ON reward_applications(status);
-CREATE INDEX idx_reward_applications_date ON reward_applications(application_date);
-CREATE INDEX idx_reward_applications_type ON reward_applications(reward_type_id);
+CREATE INDEX IF NOT EXISTS idx_reward_applications_user ON reward_applications(user_id);
+CREATE INDEX IF NOT EXISTS idx_reward_applications_status ON reward_applications(status);
+CREATE INDEX IF NOT EXISTS idx_reward_applications_date ON reward_applications(application_date);
+CREATE INDEX IF NOT EXISTS idx_reward_applications_type ON reward_applications(reward_type_id);
 
-CREATE INDEX idx_reward_approval_flows_application ON reward_approval_flows(application_id);
-CREATE INDEX idx_reward_approval_flows_approver ON reward_approval_flows(approver_id);
-CREATE INDEX idx_reward_approval_flows_status ON reward_approval_flows(status);
+CREATE INDEX IF NOT EXISTS idx_reward_approval_flows_application ON reward_approval_flows(application_id);
+CREATE INDEX IF NOT EXISTS idx_reward_approval_flows_approver ON reward_approval_flows(approver_id);
+CREATE INDEX IF NOT EXISTS idx_reward_approval_flows_status ON reward_approval_flows(status);
 
-CREATE INDEX idx_reward_score_records_user ON reward_score_records(user_id);
-CREATE INDEX idx_reward_score_records_date ON reward_score_records(award_date);
-CREATE INDEX idx_reward_score_records_type ON reward_score_records(reward_type_id);
-CREATE INDEX idx_reward_score_records_period ON reward_score_records(award_period);
+CREATE INDEX IF NOT EXISTS idx_reward_score_records_user ON reward_score_records(user_id);
+CREATE INDEX IF NOT EXISTS idx_reward_score_records_date ON reward_score_records(award_date);
+CREATE INDEX IF NOT EXISTS idx_reward_score_records_type ON reward_score_records(reward_type_id);
+CREATE INDEX IF NOT EXISTS idx_reward_score_records_period ON reward_score_records(award_period);
 
-CREATE INDEX idx_monthly_reward_summary_user ON monthly_reward_summary(user_id);
-CREATE INDEX idx_monthly_reward_summary_period ON monthly_reward_summary(year, month);
+CREATE INDEX IF NOT EXISTS idx_monthly_reward_summary_user ON monthly_reward_summary(user_id);
+CREATE INDEX IF NOT EXISTS idx_monthly_reward_summary_period ON monthly_reward_summary(year, month);
 
 -- 创建更新时间触发器
 CREATE OR REPLACE FUNCTION update_updated_at_column()

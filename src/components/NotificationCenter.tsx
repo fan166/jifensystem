@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Dropdown, List, Button, Empty, Typography, Space, Tag } from 'antd';
+import { Dropdown, List, Button, Empty, Typography, Space, Tag, Badge } from 'antd';
 import { BellOutlined, CheckOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../stores/authStore';
 import { useNotificationsStore } from '../stores/notificationsStore';

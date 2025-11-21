@@ -90,104 +90,18 @@ const Analytics: React.FC = () => {
   const loadAnalyticsData = async () => {
     setLoading(true);
     try {
-      // 模拟趋势数据
-      const mockTrendData: TrendData[] = [
-        {
-          date: '2024-01-01',
-          totalScore: 2450,
-          basicDuty: 850,
-          workPerformance: 720,
-          keyWork: 580,
-          performanceReward: 300
-        },
-        {
-          date: '2024-01-08',
-          totalScore: 2580,
-          basicDuty: 880,
-          workPerformance: 750,
-          keyWork: 620,
-          performanceReward: 330
-        },
-        {
-          date: '2024-01-15',
-          totalScore: 2720,
-          basicDuty: 920,
-          workPerformance: 780,
-          keyWork: 650,
-          performanceReward: 370
-        },
-        {
-          date: '2024-01-22',
-          totalScore: 2650,
-          basicDuty: 900,
-          workPerformance: 760,
-          keyWork: 630,
-          performanceReward: 360
-        },
-        {
-          date: '2024-01-29',
-          totalScore: 2850,
-          basicDuty: 950,
-          workPerformance: 820,
-          keyWork: 680,
-          performanceReward: 400
-        }
-      ];
-
-      // 模拟分类数据
-      const mockCategoryData: CategoryData[] = [
-        { name: '基本职责', value: 950, color: '#1890ff' },
-        { name: '工作实绩', value: 820, color: '#52c41a' },
-        { name: '重点工作', value: 680, color: '#faad14' },
-        { name: '绩效奖励', value: 400, color: '#722ed1' }
-      ];
-
-      // 模拟部门趋势数据
-      const mockDepartmentTrends: DepartmentTrend[] = [
-        {
-          department: '技术部',
-          currentMonth: 2850,
-          lastMonth: 2720,
-          change: 130,
-          changePercent: 4.8
-        },
-        {
-          department: '市场部',
-          currentMonth: 2720,
-          lastMonth: 2850,
-          change: -130,
-          changePercent: -4.6
-        },
-        {
-          department: '人事部',
-          currentMonth: 2180,
-          lastMonth: 2100,
-          change: 80,
-          changePercent: 3.8
-        },
-        {
-          department: '财务部',
-          currentMonth: 2050,
-          lastMonth: 2080,
-          change: -30,
-          changePercent: -1.4
-        }
-      ];
-
-      // 计算汇总统计
-      const totalScore = mockTrendData[mockTrendData.length - 1].totalScore;
-      const lastScore = mockTrendData[mockTrendData.length - 2].totalScore;
-      const growth = totalScore - lastScore;
-      const growthPercent = ((growth / lastScore) * 100);
+      const mockTrendData: TrendData[] = [];
+      const mockCategoryData: CategoryData[] = [];
+      const mockDepartmentTrends: DepartmentTrend[] = [];
 
       setTrendData(mockTrendData);
       setCategoryData(mockCategoryData);
       setDepartmentTrends(mockDepartmentTrends);
       setSummaryStats({
-        totalScore,
-        avgScore: Math.round(totalScore / 4), // 假设4个部门
-        growth,
-        growthPercent: Number(growthPercent.toFixed(1))
+        totalScore: 0,
+        avgScore: 0,
+        growth: 0,
+        growthPercent: 0
       });
     } catch (error) {
       console.error('加载分析数据失败:', error);

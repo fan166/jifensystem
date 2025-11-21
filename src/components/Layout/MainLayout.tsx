@@ -41,7 +41,7 @@ const MainLayout: React.FC = () => {
 
   // 基于用户权限动态生成菜单
   const getMenuItems = (): MenuProps['items'] => {
-    const baseItems = [
+    const baseItems: NonNullable<MenuProps['items']> = [
       {
         key: 'dashboard-menu',
         icon: <DashboardOutlined />,
@@ -138,7 +138,7 @@ const MainLayout: React.FC = () => {
       );
     }
 
-    return baseItems;
+    return baseItems as MenuProps['items'];
   };
 
   const menuItems = getMenuItems();

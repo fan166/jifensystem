@@ -48,37 +48,8 @@ interface Statistics {
   lowestScore: number;
 }
 
-// 模拟数据生成
 const generateMockData = (): RankingData[] => {
-  const departments = ['行政部', '财务部', '人事部', '技术部', '市场部', '销售部'];
-  const names = [
-    '张三', '李四', '王五', '赵六', '钱七', '孙八', '周九', '吴十',
-    '郑十一', '王十二', '冯十三', '陈十四', '褚十五', '卫十六', '蒋十七', '沈十八',
-    '韩十九', '杨二十', '朱二十一', '秦二十二', '尤二十三', '许二十四', '何二十五',
-    '吕二十六', '施二十七', '张二十八', '孔二十九', '曹三十'
-  ];
-
-  return names.map((name, index) => {
-    const basicScore = Math.floor(Math.random() * 30) + 70; // 70-100
-    const performanceScore = Math.floor(Math.random() * 40) + 60; // 60-100
-    const keyWorkScore = Math.floor(Math.random() * 35) + 65; // 65-100
-    const bonusScore = Math.floor(Math.random() * 20); // 0-20
-    const totalScore = basicScore + performanceScore + keyWorkScore + bonusScore;
-
-    return {
-      id: `user_${index + 1}`,
-      name,
-      department: departments[Math.floor(Math.random() * departments.length)],
-      avatar: `https://api.dicebear.com/7.x/miniavs/svg?seed=${name}`,
-      basicScore,
-      performanceScore,
-      keyWorkScore,
-      bonusScore,
-      totalScore,
-      rank: 0 // 将在排序后设置
-    };
-  }).sort((a, b) => b.totalScore - a.totalScore)
-    .map((item, index) => ({ ...item, rank: index + 1 }));
+  return [];
 };
 
 const Ranking: React.FC = () => {
@@ -102,11 +73,19 @@ const Ranking: React.FC = () => {
   // 统计信息计算
   const statistics: Statistics = useMemo(() => {
     const scores = filteredData.map(item => item.totalScore);
+    if (scores.length === 0) {
+      return {
+        totalPeople: 0,
+        averageScore: 0,
+        highestScore: 0,
+        lowestScore: 0
+      };
+    }
     return {
       totalPeople: filteredData.length,
-      averageScore: Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length) || 0,
-      highestScore: Math.max(...scores) || 0,
-      lowestScore: Math.min(...scores) || 0
+      averageScore: Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length),
+      highestScore: Math.max(...scores),
+      lowestScore: Math.min(...scores)
     };
   }, [filteredData]);
 
@@ -348,7 +327,7 @@ const Ranking: React.FC = () => {
       </Card>
 
       {/* 自定义样式 */}
-      <style jsx>{`
+      <style>{`
         .rank-first {
           background: linear-gradient(90deg, #fff7e6 0%, #ffffff 100%);
           border-left: 4px solid #FFD700;
