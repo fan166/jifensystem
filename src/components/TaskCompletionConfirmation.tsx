@@ -119,16 +119,27 @@ const TaskCompletionConfirmation: React.FC<TaskCompletionConfirmationProps> = ({
         improvement_suggestions: values.improvement_suggestions || ''
       };
 
-      // 更新重点工作状态
+      // 将完成报告写入参与者记录（现有表结构支持）
+      const reportText = `${completionData.completion_summary}\n\n经验教训：${completionData.lessons_learned}\n改进建议：${completionData.improvement_suggestions}`;
+      if (selectedParticipants.length > 0) {
+        const { error: participantsError } = await supabase
+          .from('key_work_participants')
+          .update({
+            completion_status: 'completed',
+            completion_date: completionData.actual_completion_date,
+            completion_report: reportText
+          })
+          .in('id', selectedParticipants);
+        if (participantsError) throw participantsError;
+      }
+
+      // 更新重点工作基本完成信息（仅更新存在的列）
       const { error: updateError } = await supabase
         .from('key_works')
         .update({
           status: 'completed',
           completion_rate: completionData.final_completion_rate,
-          actual_completion_date: completionData.actual_completion_date,
-          completion_summary: completionData.completion_summary,
-          lessons_learned: completionData.lessons_learned,
-          improvement_suggestions: completionData.improvement_suggestions
+          actual_completion_date: completionData.actual_completion_date
         })
         .eq('id', keyWork.id);
 
@@ -412,32 +423,37 @@ const TaskCompletionConfirmation: React.FC<TaskCompletionConfirmationProps> = ({
       <h2 className="text-2xl font-bold mb-4">任务闭环完成！</h2>
       
       <Card className="mb-4">
-        <Timeline>
-          <Timeline.Item dot={<FileTextOutlined />}>
-            <div className="text-left">
-              <div className="font-medium">完成报告已提交</div>
-              <div className="text-gray-600 text-sm">
-                完成度：{completionData?.final_completion_rate}%
-              </div>
-            </div>
-          </Timeline.Item>
-          <Timeline.Item dot={<StarOutlined />}>
-            <div className="text-left">
-              <div className="font-medium">评价已完成</div>
-              <div className="text-gray-600 text-sm">
-                已评价 {evaluationResults.length} 位参与人员
-              </div>
-            </div>
-          </Timeline.Item>
-          <Timeline.Item dot={<CheckCircleOutlined />}>
-            <div className="text-left">
-              <div className="font-medium">任务闭环</div>
-              <div className="text-gray-600 text-sm">
-                {dayjs().format('YYYY-MM-DD HH:mm')}
-              </div>
-            </div>
-          </Timeline.Item>
-        </Timeline>
+        <Timeline
+          items={[
+            {
+              dot: <FileTextOutlined />,
+              children: (
+                <div className="text-left">
+                  <div className="font-medium">完成报告已提交</div>
+                  <div className="text-gray-600 text-sm">完成度：{completionData?.final_completion_rate}%</div>
+                </div>
+              )
+            },
+            {
+              dot: <StarOutlined />,
+              children: (
+                <div className="text-left">
+                  <div className="font-medium">评价已完成</div>
+                  <div className="text-gray-600 text-sm">已评价 {evaluationResults.length} 位参与人员</div>
+                </div>
+              )
+            },
+            {
+              dot: <CheckCircleOutlined />,
+              children: (
+                <div className="text-left">
+                  <div className="font-medium">任务闭环</div>
+                  <div className="text-gray-600 text-sm">{dayjs().format('YYYY-MM-DD HH:mm')}</div>
+                </div>
+              )
+            }
+          ]}
+        />
       </Card>
 
       <Button type="primary" size="large" onClick={handleFinish}>

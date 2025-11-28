@@ -13,6 +13,7 @@ export default function Login() {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [needsEmailConfirm, setNeedsEmailConfirm] = useState(false);
   const navigate = useNavigate();
   const { setUser } = useAuthStore();
 
@@ -77,10 +78,7 @@ export default function Login() {
           updated_at: data.user.updated_at || data.user.created_at
         };
 
-        // 设置用户状态
         setUser(mappedUser as any);
-        
-        // 清除可能存在的临时用户数据
         localStorage.removeItem('temp_user');
       }
 
@@ -92,52 +90,26 @@ export default function Login() {
       if (/Invalid login credentials/i.test(msg)) {
         toast.error('账号或密码不正确，请重试');
       } else if (/Email not confirmed/i.test(msg)) {
-        toast.error('邮箱未确认，请在Supabase控制台确认邮箱后重试');
+        setNeedsEmailConfirm(true);
+        toast.error('邮箱未确认，请点击下方“发送确认邮件”或在控制台确认邮箱后重试');
       } else {
         toast.error('登录失败，请检查账号（邮箱或用户名）和密码');
       }
 
-      // 演示模式回退：支持本地临时登录（仅开发环境）
-      try {
-        const demoMap: Record<string, { email: string; password: string; role: 'admin' | 'manager' | 'employee'; name: string; }> = {
-          'admin@company.com': { email: 'admin@company.com', password: 'admin123', role: 'admin', name: '系统管理员' },
-          'manager@company.com': { email: 'manager@company.com', password: 'manager123', role: 'manager', name: '考核办管理员' },
-          'employee@company.com': { email: 'employee@company.com', password: 'employee123', role: 'employee', name: '普通职工' },
-          '系统管理员': { email: 'admin@company.com', password: 'admin123', role: 'admin', name: '系统管理员' },
-          '考核办管理员': { email: 'manager@company.com', password: 'manager123', role: 'manager', name: '考核办管理员' },
-          '普通职工': { email: 'employee@company.com', password: 'employee123', role: 'employee', name: '普通职工' },
-        };
-
-        const resolvedKey = identifier.includes('@') ? identifier.trim() : (await resolveEmail(identifier));
-        const demo = demoMap[identifier.trim()] || demoMap[resolvedKey];
-
-        if (demo && password === demo.password) {
-          const roleMapping = {
-            admin: 'system_admin',
-            manager: 'assessment_admin',
-            employee: 'employee'
-          } as const;
-
-          const tempUser = {
-            id: crypto?.randomUUID ? crypto.randomUUID() : `temp-${Date.now()}`,
-            email: demo.email,
-            name: demo.name,
-            role: roleMapping[demo.role],
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          };
-
-          localStorage.setItem('temp_user', JSON.stringify(tempUser));
-          setUser(tempUser as any);
-          toast.success('以演示模式登录成功');
-          navigate('/');
-          return;
-        }
-      } catch (fallbackErr) {
-        console.warn('演示登录回退失败:', fallbackErr);
-      }
+      // 禁止演示模式或临时登录回退
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResendConfirm = async () => {
+    try {
+      const email = await resolveEmail(identifier);
+      const { data, error } = await supabase.auth.resend({ type: 'signup', email });
+      if (error) throw error;
+      toast.success('确认邮件已发送，请前往邮箱完成确认');
+    } catch (e: any) {
+      toast.error('发送确认邮件失败：' + (e.message || '未知错误'));
     }
   };
 
@@ -204,24 +176,22 @@ export default function Login() {
                 required
               />
             </div>
-            <div className="border border-input bg-background rounded-md p-2 shadow-sm">
-              <Button type="submit" className="w-full border-0 bg-transparent hover:bg-accent hover:text-accent-foreground" disabled={loading}>
-                {loading ? '登录中...' : '登录'}
-              </Button>
-            </div>
-          </form>
-          
-          <div className="mt-4 pt-4 border-t">
-            <Button 
-              variant="outline" 
-              className="w-full" 
-              onClick={handleTempLogin}
-              disabled={loading}
-            >临时登录（开发环境）</Button>
-            <p className="text-xs text-gray-500 mt-2 text-center">
-              临时登录功能仅用于开发测试
-            </p>
+          <div className="border border-input bg-background rounded-md p-2 shadow-sm">
+            <Button type="submit" className="w-full border-0 bg-transparent hover:bg-accent hover{text-accent-foreground" disabled={loading}>
+              {loading ? '登录中...' : '登录'}
+            </Button>
           </div>
+          {needsEmailConfirm && (
+            <div className="mt-3 text-center">
+              <Button type="default" onClick={handleResendConfirm} className="w-full">
+                发送确认邮件
+              </Button>
+              <div className="text-xs text-gray-500 mt-2">若未收到邮件，请检查垃圾箱或联系管理员</div>
+            </div>
+          )}
+        </form>
+          
+          {/* 演示/临时登录入口已禁用 */}
         </CardContent>
       </Card>
     </div>

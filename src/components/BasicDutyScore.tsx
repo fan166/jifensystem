@@ -7,6 +7,7 @@ import LearningScore from './LearningScore';
 import DisciplineScore from './DisciplineScore';
 import BasicDutyStats from './BasicDutyStats';
 import { userAPI, scoreAPI, scoreTypeAPI } from '../services/api';
+import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../stores/authStore';
 import type { User } from '../lib/supabase';
 
@@ -38,9 +39,15 @@ const BasicDutyScore: React.FC<BasicDutyScoreProps> = ({ readonly = false }) => 
       Promise.all([
         userAPI.getUsers(),
         scoreTypeAPI.getScoreTypesByCategory('basic_duty')
-      ]).then(([users, types]) => {
+      ]).then(async ([users, types]) => {
         setAllUsers(users);
-        setBasicDutyTypes(types);
+        if (!types || types.length === 0) {
+          await ensureBasicDutyTypes();
+          const refreshed = await scoreTypeAPI.getScoreTypesByCategory('basic_duty');
+          setBasicDutyTypes(refreshed);
+        } else {
+          setBasicDutyTypes(types);
+        }
       }).catch(err => {
         console.error('预载入基础数据失败:', err);
       });
@@ -52,18 +59,21 @@ const BasicDutyScore: React.FC<BasicDutyScoreProps> = ({ readonly = false }) => 
     if (!canEdit) return;
     const templateData = [
       ['基本职责积分导入模板说明：'],
-      ['1. 考勤管理：评分范围0-5分，主要考核出勤情况、请假制度执行等'],
-      ['2. 基础学习：评分范围0-5分，主要考核学习态度、培训参与度等'],
-      ['3. 工作纪律：评分范围0-10分，主要考核工作规范、制度执行等'],
-      ['4. 总分：各项得分之和，系统会自动计算'],
+      ['1. 采用扣分规则：满分 20 分（考勤5 + 学习5 + 纪律10）'],
+      ['2. 计算公式：基本职责积分 = 20 − 考勤扣分 − 学习扣分 − 纪律扣分'],
+      ['3. 扣分范围：考勤 0-5，学习 0-5，纪律 0-10'],
+      ['4. 总分列已设置公式，请按列填写扣分数据'],
       ['5. 请按照模板格式填写，确保数据准确性'],
       [''],
       ['姓名', '部门', '考勤管理(0-5分)', '基础学习(0-5分)', '工作纪律(0-10分)', '总分', '备注'],
-      ['张三', '技术部', '5', '4', '8', '17', '表现良好'],
-      ['李四', '市场部', '4', '5', '9', '18', '学习积极'],
-      ['王五', '财务部', '5', '3', '7', '15', '需加强学习']
+      ['张三', '技术部', '1', '1', '2', '', '扣分较少'],
+      ['李四', '市场部', '0', '2', '3', '', '学习需加强'],
+      ['王五', '财务部', '2', '2', '4', '', '纪律需提升']
     ];
     const ws = XLSX.utils.aoa_to_sheet(templateData);
+    ws['F9'] = { t: 'n', f: '20 - C9 - D9 - E9' } as any;
+    ws['F10'] = { t: 'n', f: '20 - C10 - D10 - E10' } as any;
+    ws['F11'] = { t: 'n', f: '20 - C11 - D11 - E11' } as any;
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, '基本职责积分模板');
     XLSX.writeFile(wb, '基本职责积分导入模板.xlsx');
@@ -108,46 +118,72 @@ const BasicDutyScore: React.FC<BasicDutyScoreProps> = ({ readonly = false }) => 
       }
     }
     if (dataStartIndex === 0 && rawData[0][0] !== '姓名') {
-      message.error('未找到有效的表头，请检查文件格式');
-      return [];
+      dataStartIndex = 0;
     }
-    const headers = rawData[dataStartIndex];
-    const requiredHeaders = ['姓名', '部门', '考勤管理(0-5分)', '基础学习(0-5分)', '工作纪律(0-10分)'];
-    const isValidHeader = requiredHeaders.every(header => headers.includes(header));
-    if (!isValidHeader) {
-      message.error(`表头格式不正确，应包含：${requiredHeaders.join('、')}`);
+    const headers = (rawData[dataStartIndex] || []).map(h => String(h || '').trim());
+    const matchIndex = (candidates: string[]) => {
+      const norm = (s: string) => s.replace(/\s+/g, '').replace(/[()（）]/g, '');
+      for (let i = 0; i < headers.length; i++) {
+        const h = norm(headers[i]);
+        for (const c of candidates) {
+          const cn = norm(c);
+          if (h === cn || h.includes(cn)) return i;
+        }
+      }
+      return -1;
+    };
+    const idxName = matchIndex(['姓名','名字']);
+    const idxDept = matchIndex(['部门','所在部门']);
+    const idxAttend = matchIndex(['考勤扣分(0-5分)','考勤管理扣分(0-5分)','考勤管理(0-5分)','考勤管理','考勤','出勤']);
+    const idxLearn = matchIndex(['学习扣分(0-5分)','基础学习扣分(0-5分)','基础学习(0-5分)','基础学习','学习']);
+    const idxDiscip = matchIndex(['纪律扣分(0-10分)','工作纪律扣分(0-10分)','工作纪律(0-10分)','工作纪律','纪律']);
+    const idxTotal = matchIndex(['总分','合计','总计']);
+    const idxRemark = matchIndex(['备注','说明']);
+    if ([idxName, idxAttend, idxLearn, idxDiscip].some(i => i < 0)) {
+      message.error('表头缺失或不规范，请参考模板或调整列名');
       return [];
     }
     const dataRows = rawData.slice(dataStartIndex + 1).filter(row => row && row.some(cell => cell !== undefined && cell !== ''));
     return dataRows.map((row, index) => {
       const rowData: any = { key: index };
-      headers.forEach((header, headerIndex) => {
-        rowData[header] = row[headerIndex];
-      });
+      rowData['姓名'] = row[idxName];
+      rowData['部门'] = idxDept >= 0 ? row[idxDept] : '未分配部门';
+      rowData['考勤管理(0-5分)'] = row[idxAttend];
+      rowData['基础学习(0-5分)'] = row[idxLearn];
+      rowData['工作纪律(0-10分)'] = row[idxDiscip];
+      if (idxTotal >= 0) rowData['总分'] = row[idxTotal];
+      if (idxRemark >= 0) rowData['备注'] = row[idxRemark];
       rowData.valid = validateRowData(rowData);
       return rowData;
     });
   };
 
+  const pickVal = (obj: any, keys: string[]) => {
+    for (const k of keys) {
+      const v = obj[k];
+      if (v !== undefined && v !== null && String(v).trim() !== '') return v;
+    }
+    return undefined;
+  };
   // 验证行数据
   const validateRowData = (rowData: any) => {
     const errors: string[] = [];
     if (!rowData['姓名']) errors.push('姓名不能为空');
-    if (!rowData['部门']) errors.push('部门不能为空');
-    const attendanceScore = Number(rowData['考勤管理(0-5分)']);
+    // 部门可选，缺省将自动分配为“未分配部门”
+    const attendanceScore = parseFloat(String(pickVal(rowData, ['考勤扣分(0-5分)','考勤管理(0-5分)','考勤管理','考勤']) ?? '').toString().trim());
     if (isNaN(attendanceScore) || attendanceScore < 0 || attendanceScore > 5) {
-      errors.push('考勤管理得分必须为0-5之间的数字');
+      errors.push('考勤扣分必须为0-5之间的数字');
     }
-    const learningScore = Number(rowData['基础学习(0-5分)']);
+    const learningScore = parseFloat(String(pickVal(rowData, ['学习扣分(0-5分)','基础学习(0-5分)','基础学习','学习']) ?? '').toString().trim());
     if (isNaN(learningScore) || learningScore < 0 || learningScore > 5) {
-      errors.push('基础学习得分必须为0-5之间的数字');
+      errors.push('学习扣分必须为0-5之间的数字');
     }
-    const disciplineScore = Number(rowData['工作纪律(0-10分)']);
+    const disciplineScore = parseFloat(String(pickVal(rowData, ['纪律扣分(0-10分)','工作纪律(0-10分)','工作纪律','纪律']) ?? '').toString().trim());
     if (isNaN(disciplineScore) || disciplineScore < 0 || disciplineScore > 10) {
-      errors.push('工作纪律得分必须为0-10之间的数字');
+      errors.push('纪律扣分必须为0-10之间的数字');
     }
-    const calculatedTotal = attendanceScore + learningScore + disciplineScore;
-    const providedTotal = Number(rowData['总分']);
+    const calculatedTotal = 20 - (attendanceScore + learningScore + disciplineScore);
+    const providedTotal = parseFloat(String(rowData['总分'] ?? '').toString().trim());
     if (!isNaN(providedTotal) && Math.abs(providedTotal - calculatedTotal) > 0.1) {
       errors.push(`总分不匹配，应为${calculatedTotal}分`);
     }
@@ -156,6 +192,61 @@ const BasicDutyScore: React.FC<BasicDutyScoreProps> = ({ readonly = false }) => 
       errors,
       calculatedTotal
     };
+  };
+
+  const ensureBasicDutyTypes = async () => {
+    const { data: existing } = await supabase
+      .from('score_types')
+      .select('id, name, category')
+      .eq('category', 'basic_duty');
+    const names = new Set((existing || []).map((t: any) => t.name));
+    const needed = [
+      { name: '考勤管理', category: 'basic_duty' },
+      { name: '基础学习', category: 'basic_duty' },
+      { name: '工作纪律', category: 'basic_duty' }
+    ].filter(t => !names.has(t.name));
+    if (needed.length > 0) {
+      await supabase.from('score_types').insert(needed);
+    }
+  };
+
+  const ensureDepartmentByName = async (name: string) => {
+    const deptName = (name || '').trim() || '未分配部门';
+    const { data: found } = await supabase
+      .from('departments')
+      .select('id, name')
+      .eq('name', deptName)
+      .limit(1);
+    if (found && found[0]) return found[0].id as string;
+    const { data: created } = await supabase
+      .from('departments')
+      .insert([{ name: deptName, description: '' }])
+      .select('id')
+      .single();
+    return created?.id as string;
+  };
+
+  const ensureUserByName = async (name: string, departmentId?: string) => {
+    const userName = (name || '').trim();
+    const { data: found } = await supabase
+      .from('users')
+      .select('id, name, email, role, department_id')
+      .eq('name', userName)
+      .limit(1);
+    if (found && found[0]) return found[0];
+    const uniqueEmail = `generated_${Date.now()}_${Math.random().toString(36).slice(2)}@local.local`;
+    const payload: any = {
+      name: userName,
+      email: uniqueEmail,
+      role: 'employee',
+      department_id: departmentId || null
+    };
+    const { data: created } = await supabase
+      .from('users')
+      .insert([payload])
+      .select('id, name, email, role, department_id')
+      .single();
+    return created;
   };
 
   // 批量导入数据
@@ -172,10 +263,24 @@ const BasicDutyScore: React.FC<BasicDutyScoreProps> = ({ readonly = false }) => 
     const failedItems: string[] = [];
     const period = new Date().toISOString().slice(0, 7);
     try {
+      if (!basicDutyTypes || basicDutyTypes.length === 0) {
+        await ensureBasicDutyTypes();
+        const refreshed = await scoreTypeAPI.getScoreTypesByCategory('basic_duty');
+        setBasicDutyTypes(refreshed);
+      }
       for (const item of validData) {
         try {
           const importUserName = String(item['姓名']).trim();
-          const targetUser = allUsers.find(u => String(u.name).trim() === importUserName);
+          let targetUser = allUsers.find(u => String(u.name).trim() === importUserName);
+          if (!targetUser) {
+            const deptName = String(item['部门'] ?? '').trim();
+            const deptId = await ensureDepartmentByName(deptName);
+            const ensuredUser = await ensureUserByName(importUserName, deptId);
+            if (ensuredUser) {
+              targetUser = ensuredUser as any;
+              setAllUsers(prev => [...prev, ensuredUser as any]);
+            }
+          }
           if (!targetUser) throw new Error(`用户 ${importUserName} 不存在`);
 
           const scorePromises: Promise<any>[] = [];
@@ -184,37 +289,37 @@ const BasicDutyScore: React.FC<BasicDutyScoreProps> = ({ readonly = false }) => 
           const learningType = basicDutyTypes.find((st: any) => st.name.includes('学习') || st.name.includes('培训'));
           const disciplineType = basicDutyTypes.find((st: any) => st.name.includes('纪律') || st.name.includes('规范'));
 
-          const attendanceScore = Number(item['考勤管理(0-5分)']);
+          const attendanceScore = Number(pickVal(item, ['考勤扣分(0-5分)','考勤管理(0-5分)']));
           if (attendanceType && attendanceScore > 0) {
             scorePromises.push(scoreAPI.createScore({
               user_id: targetUser.id,
               score_type_id: attendanceType.id,
-              score: attendanceScore,
-              reason: `考勤管理积分：${attendanceScore}分${item['备注'] ? ' - ' + item['备注'] : ''}`,
+              score: -Math.abs(attendanceScore),
+              reason: `考勤扣分：${attendanceScore}分${item['备注'] ? ' - ' + item['备注'] : ''}`,
               recorder_id: user?.id || '',
               period
             }));
           }
 
-          const learningScore = Number(item['基础学习(0-5分)']);
+          const learningScore = Number(pickVal(item, ['学习扣分(0-5分)','基础学习(0-5分)']));
           if (learningType && learningScore > 0) {
             scorePromises.push(scoreAPI.createScore({
               user_id: targetUser.id,
               score_type_id: learningType.id,
-              score: learningScore,
-              reason: `基础学习积分：${learningScore}分${item['备注'] ? ' - ' + item['备注'] : ''}`,
+              score: -Math.abs(learningScore),
+              reason: `学习扣分：${learningScore}分${item['备注'] ? ' - ' + item['备注'] : ''}`,
               recorder_id: user?.id || '',
               period
             }));
           }
 
-          const disciplineScore = Number(item['工作纪律(0-10分)']);
+          const disciplineScore = Number(pickVal(item, ['纪律扣分(0-10分)','工作纪律(0-10分)']));
           if (disciplineType && disciplineScore > 0) {
             scorePromises.push(scoreAPI.createScore({
               user_id: targetUser.id,
               score_type_id: disciplineType.id,
-              score: disciplineScore,
-              reason: `工作纪律积分：${disciplineScore}分${item['备注'] ? ' - ' + item['备注'] : ''}`,
+              score: -Math.abs(disciplineScore),
+              reason: `纪律扣分：${disciplineScore}分${item['备注'] ? ' - ' + item['备注'] : ''}`,
               recorder_id: user?.id || '',
               period
             }));
@@ -235,7 +340,7 @@ const BasicDutyScore: React.FC<BasicDutyScoreProps> = ({ readonly = false }) => 
       } else if (successCount > 0 && failedCount > 0) {
         message.warning(`导入完成：成功 ${successCount} 条，失败 ${failedCount} 条`);
       } else {
-        message.error('导入失败');
+        message.error('导入失败：未匹配到积分类型或用户');
       }
       if (successCount > 0) {
         setImportModalVisible(false);
@@ -259,7 +364,7 @@ const BasicDutyScore: React.FC<BasicDutyScoreProps> = ({ readonly = false }) => 
           <Upload accept=".xlsx,.xls,.csv" beforeUpload={handleFileUpload} showUploadList={false}>
             <Button icon={<UploadOutlined />}>批量导入</Button>
           </Upload>
-          <Button icon={<DownloadOutlined />} onClick={downloadTemplate}>下载模板</Button>
+          <Button icon={<DownloadOutlined />} onClick={downloadTemplate}>基础职责积分模板</Button>
         </Space>
       ) : null}
     >
@@ -311,16 +416,19 @@ const BasicDutyScore: React.FC<BasicDutyScoreProps> = ({ readonly = false }) => 
             type="primary"
             loading={importLoading}
             onClick={handleBatchImport}
-            disabled={!canEdit || importData.filter((item: any) => item.valid?.isValid).length === 0}
+            disabled={!canEdit || importData.length === 0}
           >
-            导入数据 ({importData.filter((item: any) => item.valid?.isValid).length}条)
+            导入数据 ({importData.length}条)
           </Button>
         ]}
       >
         <div className="mb-4">
           <div className="text-sm text-gray-600 mb-2">
-            共 {importData.length} 条数据，其中 {importData.filter((item: any) => item.valid?.isValid).length} 条有效，
-            {importData.filter((item: any) => !item.valid?.isValid).length} 条无效
+            {importData.length === 0 ? (
+              <>暂无导入数据</>
+            ) : (
+              <>共 {importData.length} 条数据，其中 {importData.filter((item: any) => item.valid?.isValid).length} 条有效，{importData.filter((item: any) => !item.valid?.isValid).length} 条无效</>
+            )}
           </div>
         </div>
         <Table

@@ -89,6 +89,7 @@ const PerformanceReward: React.FC = () => {
 
   const [importLoading, setImportLoading] = useState(false);
   const [previewData, setPreviewData] = useState<RewardImportData[]>([]);
+  const [users, setUsers] = useState<Array<{ id: string; name: string; department?: { name: string } }>>([]);
 
   // 获取奖励类型
   const fetchRewardTypes = async () => {
@@ -104,6 +105,21 @@ const PerformanceReward: React.FC = () => {
     } catch (error) {
       console.error('获取奖励类型失败:', error);
       message.error('获取奖励类型失败');
+    }
+  };
+
+  // 获取人员管理中的用户列表
+  const fetchUsers = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, name, department:departments(name)')
+        .order('name', { ascending: true });
+      if (error) throw error;
+      setUsers((data || []) as any);
+    } catch (error) {
+      console.error('获取用户列表失败:', error);
+      message.error('获取用户列表失败');
     }
   };
 
@@ -186,6 +202,7 @@ const PerformanceReward: React.FC = () => {
     console.log('PerformanceReward 组件挂载，开始加载数据...');
     fetchRewardTypes();
     fetchRewardRecords();
+    fetchUsers();
   }, [user?.id]);
 
   // 处理表单提交
@@ -281,22 +298,26 @@ const PerformanceReward: React.FC = () => {
 
   // 下载导入模板
   const downloadTemplate = () => {
-    const template = [
-      {
-        '用户ID': 'user_id_example',
-        '奖励类型ID': 'reward_type_id_example',
-        '奖励标题': '优秀员工',
-        '奖励描述': '月度优秀员工表彰',
-        '分值': '10.0',
-        '奖励日期': '2024-01-15',
-        '奖励周期': '2024-01',
-        '证书编号': 'CERT001',
-      },
+    const header = ['获奖人员','部门','奖励类型','奖励项目','分值','奖励日期'];
+
+    const guide = [
+      ['字段说明'],
+      ['用户ID','人员管理中的用户唯一ID，可通过下拉选择获奖人员获得'],
+      ['奖励类型','填写类别文本：考评加分/表彰加分/先进加分/其他加分'],
+      ['获奖人员','用户姓名（辅助核对），系统将按“姓名+部门”匹配用户'],
+      ['奖励项目','奖励条目的名称，例如“考评优秀”“先进个人”等'],
+      ['分值','正数，支持一位小数'],
+      ['奖励日期','格式 YYYY-MM-DD'],
+      ['部门','用户所属部门名称，用于辅助核对与展示'],
     ];
 
-    const ws = XLSX.utils.json_to_sheet(template);
+    const ws = XLSX.utils.aoa_to_sheet([header]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, '奖励记录模板');
+
+    const ws2 = XLSX.utils.aoa_to_sheet(guide);
+    XLSX.utils.book_append_sheet(wb, ws2, '填写说明');
+
     XLSX.writeFile(wb, '绩效奖励积分导入模板.xlsx');
   };
 
@@ -315,12 +336,6 @@ const PerformanceReward: React.FC = () => {
       width: 120,
     },
     {
-      title: '奖励项目',
-      dataIndex: 'title',
-      key: 'title',
-      width: 150,
-    },
-    {
       title: '奖励类型',
       dataIndex: ['reward_type', 'name'],
       key: 'reward_type',
@@ -332,13 +347,26 @@ const PerformanceReward: React.FC = () => {
           innovation: 'orange',
           special: 'purple',
         };
+        const categoryLabelMap: Record<string, string> = {
+          innovation: '考评加分',
+          commendation: '表彰加分',
+          advanced: '先进加分',
+          special: '其他加分',
+        };
         return (
           <Tag color={categoryColors[record.reward_type?.category || 'commendation']}>
-            {text}
+            {categoryLabelMap[record.reward_type?.category || 'commendation']}
           </Tag>
         );
       },
     },
+    {
+      title: '奖励项目',
+      dataIndex: 'title',
+      key: 'title',
+      width: 150,
+    },
+    
     {
       title: '分值',
       dataIndex: 'score',
@@ -433,12 +461,14 @@ const PerformanceReward: React.FC = () => {
               placeholder="选择获奖人员"
               showSearch
               filterOption={(input, option) =>
-                option?.children?.toLowerCase().indexOf(input.toLowerCase()) >= 0
+                String(option?.children ?? '').toLowerCase().includes(input.toLowerCase())
               }
             >
-              {/* 这里应该加载用户列表 */}
-              <Option value="user1">张三</Option>
-              <Option value="user2">李四</Option>
+              {users.map(u => (
+                <Option key={u.id} value={u.id}>
+                  {u.name}{u.department?.name ? ` - ${u.department.name}` : ''}
+                </Option>
+              ))}
             </Select>
           </Form.Item>
 
@@ -448,32 +478,29 @@ const PerformanceReward: React.FC = () => {
             rules={[{ required: true, message: '请选择奖励类型' }]}
           >
             <Select placeholder="选择奖励类型">
-              {rewardTypes.map(type => (
-                <Option key={type.id} value={type.id}>
-                  {type.name} ({type.category})
-                </Option>
-              ))}
+              {(['innovation','commendation','advanced','special'] as const).map(cat => {
+                const type = rewardTypes.find(t => t.category === cat);
+                if (!type) return null;
+                const label = cat === 'innovation' ? '考评加分'
+                  : cat === 'commendation' ? '表彰加分'
+                  : cat === 'advanced' ? '先进加分'
+                  : '其他加分';
+                return (
+                  <Option key={type.id} value={type.id}>{label}</Option>
+                );
+              })}
             </Select>
           </Form.Item>
 
           <Form.Item
             name="title"
-            label="奖励标题"
+            label="奖励项目"
             rules={[{ required: true, message: '请输入奖励标题' }]}
           >
             <Input placeholder="请输入奖励标题" />
           </Form.Item>
 
-          <Form.Item
-            name="description"
-            label="奖励描述"
-            rules={[{ required: true, message: '请输入奖励描述' }]}
-          >
-            <Input.TextArea
-              rows={3}
-              placeholder="请输入奖励描述"
-            />
-          </Form.Item>
+          
 
           <Form.Item
             name="score"
@@ -500,12 +527,7 @@ const PerformanceReward: React.FC = () => {
             <DatePicker style={{ width: '100%' }} />
           </Form.Item>
 
-          <Form.Item
-            name="certificate_number"
-            label="证书编号"
-          >
-            <Input placeholder="请输入证书编号（可选）" />
-          </Form.Item>
+          
 
           <Form.Item>
             <Space>

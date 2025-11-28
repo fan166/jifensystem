@@ -22,47 +22,9 @@ export const useAuthStore = create<AuthState>()(persist(
     isLoading: false,
 
     login: async (email: string, password: string) => {
-      set({ isLoading: true });
-      try {
-        // 这个方法现在主要用于状态管理，实际认证在Login组件中处理
-        // 保留原有逻辑作为备用方案
-        const demoAccounts = {
-          'admin@company.com': 'admin123',
-          'manager@company.com': 'manager123', 
-          'employee@company.com': 'employee123'
-        };
-
-        if (demoAccounts[email as keyof typeof demoAccounts] !== password) {
-          throw new Error('用户名或密码错误');
-        }
-
-        const users = await userAPI.getUsers();
-        const user = users.find(u => u.email === email);
-        
-        if (user) {
-          const roleMapping = {
-            admin: 'system_admin',
-            manager: 'assessment_admin',
-            employee: 'employee'
-          } as const;
-          
-          const mappedUser = {
-            ...user,
-            role: (roleMapping as any)[user.role] || user.role
-          } as User;
-
-          set({ 
-            user: mappedUser, 
-            isAuthenticated: true, 
-            isLoading: false 
-          });
-        } else {
-          throw new Error('用户不存在');
-        }
-      } catch (error) {
-        set({ isLoading: false });
-        throw error;
-      }
+      // 禁用备用演示登录逻辑，所有认证在 Login 页面处理并受角色限制
+      set({ isLoading: false });
+      throw new Error('请通过登录页进行认证');
     },
 
     logout: () => {
@@ -90,100 +52,39 @@ export const useAuthStore = create<AuthState>()(persist(
     checkAuth: async () => {
       set({ isLoading: true });
       try {
-        // 首先检查localStorage中的临时用户
-        const tempUser = localStorage.getItem('temp_user');
-        if (tempUser) {
-          try {
-            const userData = JSON.parse(tempUser);
-            const user = {
-              id: userData.id,
-              email: userData.email,
-              name: userData.name,
-              role: userData.role,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString()
-            };
-            set({ 
-              user, 
-              isAuthenticated: true, 
-              isLoading: false 
-            });
-            return;
-          } catch (parseError) {
-            console.error('解析临时用户数据失败:', parseError);
-            localStorage.removeItem('temp_user');
-          }
-        }
+        // 禁用临时用户会话
+        localStorage.removeItem('temp_user');
 
         // 检查Supabase认证状态
         const { data: { user: supabaseUser }, error } = await supabase.auth.getUser();
         if (supabaseUser && !error) {
           const userMetadata = supabaseUser.user_metadata || {};
           const userRole = userMetadata.role || 'employee';
-          
-          // 角色映射
           const roleMapping = {
             admin: 'system_admin',
             manager: 'assessment_admin',
             employee: 'employee'
           } as const;
 
+          const mappedRole = roleMapping[userRole as keyof typeof roleMapping] || 'employee';
+
           const mappedUser = {
             id: supabaseUser.id,
             email: supabaseUser.email || '',
             name: userMetadata.name || '用户',
-            role: roleMapping[userRole as keyof typeof roleMapping] || 'employee',
+            role: mappedRole,
             created_at: supabaseUser.created_at,
             updated_at: supabaseUser.updated_at || supabaseUser.created_at
           };
 
-          set({ 
-            user: mappedUser, 
-            isAuthenticated: true, 
-            isLoading: false 
-          });
+          set({ user: mappedUser as any, isAuthenticated: true, isLoading: false });
           return;
         }
 
-        // 检查Zustand持久化存储中的用户
-        const currentUser = get().user;
-        if (currentUser) {
-          // 验证用户是否仍然有效
-          try {
-            const users = await userAPI.getUsers();
-            const validUser = users.find(u => u.id === currentUser.id);
-            if (validUser) {
-              set({ 
-                user: validUser, 
-                isAuthenticated: true, 
-                isLoading: false 
-              });
-              return;
-            }
-          } catch (apiError) {
-            console.warn('验证用户有效性失败，但保持当前用户状态:', apiError);
-            set({ 
-              user: currentUser, 
-              isAuthenticated: true, 
-              isLoading: false 
-            });
-            return;
-          }
-        }
-
-        // 如果没有找到任何有效的认证状态
-        set({ 
-          user: null, 
-          isAuthenticated: false, 
-          isLoading: false 
-        });
+        set({ user: null, isAuthenticated: false, isLoading: false });
       } catch (error) {
         console.error('检查认证状态失败:', error);
-        set({ 
-          user: null, 
-          isAuthenticated: false, 
-          isLoading: false 
-        });
+        set({ user: null, isAuthenticated: false, isLoading: false });
       }
     },
 

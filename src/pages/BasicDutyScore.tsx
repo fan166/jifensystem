@@ -510,23 +510,26 @@ const BasicDutyScore: React.FC = () => {
   const downloadTemplate = () => {
     const templateData = [
       ['基本职责积分导入模板说明：'],
-      ['1. 考勤管理：评分范围0-5分，主要考核出勤情况、请假制度执行等'],
-      ['2. 基础学习：评分范围0-5分，主要考核学习态度、培训参与度等'],
-      ['3. 工作纪律：评分范围0-10分，主要考核工作规范、制度执行等'],
-      ['4. 总分：各项得分之和，系统会自动计算'],
+      ['1. 采用扣分规则：满分 20 分（考勤5 + 学习5 + 纪律10）'],
+      ['2. 计算公式：基本职责积分 = 20 − 考勤扣分 − 学习扣分 − 纪律扣分'],
+      ['3. 扣分范围：考勤 0-5，学习 0-5，纪律 0-10'],
+      ['4. 总分列已设置公式，请按列填写扣分数据'],
       ['5. 请按照模板格式填写，确保数据准确性'],
       [''],
       ['姓名', '部门', '考勤管理(0-5分)', '基础学习(0-5分)', '工作纪律(0-10分)', '总分', '备注'],
-      ['张三', '技术部', '5', '4', '8', '17', '表现良好'],
-      ['李四', '市场部', '4', '5', '9', '18', '学习积极'],
-      ['王五', '财务部', '5', '3', '7', '15', '需加强学习']
+      ['张三', '技术部', '1', '1', '2', '', '扣分较少'],
+      ['李四', '市场部', '0', '2', '3', '', '学习需加强'],
+      ['王五', '财务部', '2', '2', '4', '', '纪律需提升']
     ];
-    
+
     const ws = XLSX.utils.aoa_to_sheet(templateData);
+    ws['F9'] = { t: 'n', f: '20 - C9 - D9 - E9' } as any;
+    ws['F10'] = { t: 'n', f: '20 - C10 - D10 - E10' } as any;
+    ws['F11'] = { t: 'n', f: '20 - C11 - D11 - E11' } as any;
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, '基本职责积分模板');
     XLSX.writeFile(wb, '基本职责积分导入模板.xlsx');
-    
+
     message.success('模板下载成功');
   };
 
@@ -608,9 +611,9 @@ const BasicDutyScore: React.FC = () => {
               </Button>
             </Upload>
             {hasPermission('write') && (
-              <Button icon={<DownloadOutlined />} onClick={downloadTemplate}>
-                下载模板
-              </Button>
+      <Button icon={<DownloadOutlined />} onClick={downloadTemplate}>
+        基础职责积分模板
+      </Button>
             )}
           </Space>
           <Space>

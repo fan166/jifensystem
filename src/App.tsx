@@ -19,7 +19,6 @@ const PerformanceEvaluation = lazy(() => import('./pages/PerformanceEvaluation')
 const Settings = lazy(() => import('./pages/Settings'));
 const Profile = lazy(() => import('./pages/Profile'));
 const Ranking = lazy(() => import('./pages/Ranking'));
-const Analytics = lazy(() => import('./pages/Analytics'));
 const Notifications = lazy(() => import('./pages/Notifications'));
 import { useAuthStore } from './stores/authStore';
 import './App.css';
@@ -46,7 +45,7 @@ function App() {
                 <MainLayout />
               </PermissionWrapper>
             }>
-              <Route index element={<Navigate to="/dashboard" replace />} />
+              <Route index element={<Navigate to="/ranking" replace />} />
               
               {/* 所有登录用户可访问的页面 */}
               <Route path="dashboard" element={<Dashboard />} />
@@ -63,12 +62,11 @@ function App() {
               
               {/* 排行榜和分析 - 所有用户可访问 */}
               <Route path="ranking" element={<Ranking />} />
-              <Route path="analytics" element={<Analytics />} />
               <Route path="notifications" element={<Notifications />} />
               
-              {/* 人员管理 - 仅管理员可访问 */}
+              {/* 人员管理 - 系统管理员或考核办管理员可访问 */}
               <Route path="personnel" element={
-                <PermissionWrapper permission="admin">
+                <PermissionWrapper permission="write">
                   <Personnel />
                 </PermissionWrapper>
               } />

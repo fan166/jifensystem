@@ -21,7 +21,8 @@ import {
   Statistic,
   Timeline,
   Rate,
-  Divider
+  Divider,
+  Descriptions
 } from 'antd';
 import KeyWorkTracking from '../components/KeyWorkTracking';
 import TaskCompletionConfirmation from '../components/TaskCompletionConfirmation';
@@ -106,10 +107,12 @@ const KeyWorkManagement: React.FC = () => {
   const [detailModalVisible, setDetailModalVisible] = useState(false);
   const [evaluationModalVisible, setEvaluationModalVisible] = useState(false);
   const [completionModalVisible, setCompletionModalVisible] = useState(false);
+  const [employeeReportModalVisible, setEmployeeReportModalVisible] = useState(false);
   const [editingWork, setEditingWork] = useState<KeyWork | null>(null);
   const [selectedWork, setSelectedWork] = useState<KeyWork | null>(null);
   const [form] = Form.useForm();
   const [evaluationForm] = Form.useForm();
+  const [reportForm] = Form.useForm();
   const [users, setUsers] = useState<any[]>([]);
   const [departments, setDepartments] = useState<any[]>([]);
   const [statistics, setStatistics] = useState({
@@ -800,6 +803,21 @@ const KeyWorkManagement: React.FC = () => {
               />
             </Tooltip>
           )}
+
+          {!hasPermission('write') && (record.participants || []).some(p => p.user_id === user?.id) && (
+            <Tooltip title="填报重点工作报告">
+              <Button
+                type="text"
+                icon={<FileTextOutlined />}
+                className="text-blue-600"
+                onClick={() => {
+                  setSelectedWork(record);
+                  reportForm.resetFields();
+                  setEmployeeReportModalVisible(true);
+                }}
+              />
+            </Tooltip>
+          )}
         </Space>
       ),
     },
@@ -851,6 +869,92 @@ const KeyWorkManagement: React.FC = () => {
         </Col>
       </Row>
 
+      <Modal
+        title="填报重点工作报告"
+        open={employeeReportModalVisible}
+        onCancel={() => setEmployeeReportModalVisible(false)}
+        onOk={async () => {
+          try {
+            const values = await reportForm.validateFields();
+            const summary: string = values.completion_summary || '';
+            const lessons: string = values.lessons_learned || '';
+            const suggestions: string = values.improvement_suggestions || '';
+            const finalRate: number = values.final_completion_rate || 0;
+            const actualDate = values.actual_completion_date ? values.actual_completion_date.format('YYYY-MM-DD') : dayjs().format('YYYY-MM-DD');
+
+            if (!selectedWork || !user?.id) {
+              message.error('无效的用户或工作信息');
+              return;
+            }
+
+            const { data: participant, error: findErr } = await supabase
+              .from('key_work_participants')
+              .select('id')
+              .eq('key_work_id', selectedWork.id)
+              .eq('user_id', user.id)
+              .single();
+
+            if (findErr || !participant) {
+              message.error('您不在该工作参与名单中，无法填报');
+              return;
+            }
+
+            const reportText = `${summary}\n\n经验教训：${lessons}\n改进建议：${suggestions}`;
+
+            const { error: updateErr } = await supabase
+              .from('key_work_participants')
+              .update({
+                completion_status: 'completed',
+                completion_date: actualDate,
+                completion_report: reportText
+              })
+              .eq('id', participant.id);
+
+            if (updateErr) throw updateErr;
+
+            // 可选：更新总体完成率（仅更新存在字段）
+            await supabase
+              .from('key_works')
+              .update({ completion_rate: finalRate })
+              .eq('id', selectedWork.id);
+
+            message.success('重点工作报告已提交');
+            setEmployeeReportModalVisible(false);
+            reportForm.resetFields();
+            // 重新加载数据以刷新状态
+            // 假设存在加载函数：fetchKeyWorks 或 loadData
+            // 这里直接重新获取列表
+            setActiveTab(activeTab);
+          } catch (err) {
+            console.error('填报失败:', err);
+            message.error('填报失败');
+          }
+        }}
+      >
+        <Form form={reportForm} layout="vertical">
+          <Form.Item name="completion_summary" label="完成总结" rules={[{ required: true, message: '请填写完成总结' }]}> 
+            <TextArea rows={4} placeholder="简要说明完成情况、关键成果" />
+          </Form.Item>
+          <Form.Item name="lessons_learned" label="经验教训">
+            <TextArea rows={3} placeholder="遇到的问题与改进经验" />
+          </Form.Item>
+          <Form.Item name="improvement_suggestions" label="改进建议">
+            <TextArea rows={3} placeholder="后续优化建议" />
+          </Form.Item>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name="actual_completion_date" label="实际完成日期" rules={[{ required: true, message: '请选择日期' }]}> 
+                <DatePicker className="w-full" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="final_completion_rate" label="完成率(0-100%)" rules={[{ required: true, message: '请输入完成率' }]}> 
+                <InputNumber min={0} max={100} className="w-full" />
+              </Form.Item>
+            </Col>
+          </Row>
+        </Form>
+      </Modal>
       <Card>
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-semibold">重点工作管理</h2>
@@ -911,21 +1015,7 @@ const KeyWorkManagement: React.FC = () => {
                 />
               ),
             }] : []),
-            {
-              key: 'tracking',
-              label: '进度跟踪',
-              children: selectedWork ? (
-                <KeyWorkTracking 
-                  keyWorkId={selectedWork?.id || ''}
-                  keyWorkTitle={selectedWork?.work_title || ''}
-                  canEdit={hasPermission('write')}
-                />
-              ) : (
-                <div className="text-center text-gray-500 py-8">
-                  请先选择一个重点工作进行跟踪
-                </div>
-              )
-            }
+            
           ]}
         />
       </Card>
@@ -1119,110 +1209,52 @@ const KeyWorkManagement: React.FC = () => {
       >
         {selectedWork && (
           <div>
-            <Row gutter={16}>
-              <Col span={12}>
-                <div className="mb-4">
-                  <label className="font-medium text-gray-600">工作标题：</label>
-                  <div className="mt-1">{selectedWork.work_title}</div>
-                </div>
-              </Col>
-              <Col span={12}>
-                <div className="mb-4">
-                  <label className="font-medium text-gray-600">工作类型：</label>
-                  <div className="mt-1">
-                    <Tag color="blue">
-                      {workTypeMap[selectedWork.work_type as keyof typeof workTypeMap]}
-                    </Tag>
-                  </div>
-                </div>
-              </Col>
-            </Row>
-
-            <Row gutter={16}>
-              <Col span={8}>
-                <div className="mb-4">
-                  <label className="font-medium text-gray-600">优先级：</label>
-                  <div className="mt-1">
-                    <Tag color={selectedWork.priority === 'urgent' ? 'red' : 
-                              selectedWork.priority === 'high' ? 'orange' : 'default'}>
-                      {priorityMap[selectedWork.priority as keyof typeof priorityMap]}
-                    </Tag>
-                  </div>
-                </div>
-              </Col>
-              <Col span={8}>
-                <div className="mb-4">
-                  <label className="font-medium text-gray-600">状态：</label>
-                  <div className="mt-1">
-                    <Tag color={selectedWork.status === 'completed' ? 'success' : 
-                              selectedWork.status === 'in_progress' ? 'processing' : 'default'}>
-                      {statusMap[selectedWork.status as keyof typeof statusMap]}
-                    </Tag>
-                  </div>
-                </div>
-              </Col>
-              <Col span={8}>
-                <div className="mb-4">
-                  <label className="font-medium text-gray-600">拟奖励重点分：</label>
-                  <div className="mt-1 text-blue-600 font-medium">{selectedWork.total_score}</div>
-                </div>
-              </Col>
-            </Row>
-
-            <div className="mb-4">
-              <label className="font-medium text-gray-600">工作描述：</label>
-              <div className="mt-1 p-3 bg-gray-50 rounded">{selectedWork.work_description}</div>
-            </div>
-
-            <Row gutter={16}>
-              <Col span={12}>
-                <div className="mb-4">
-                  <label className="font-medium text-gray-600">开始日期：</label>
-                  <div className="mt-1">{dayjs(selectedWork.start_date).format('YYYY-MM-DD')}</div>
-                </div>
-              </Col>
-              <Col span={12}>
-                <div className="mb-4">
-                  <label className="font-medium text-gray-600">结束日期：</label>
-                  <div className="mt-1">{dayjs(selectedWork.end_date).format('YYYY-MM-DD')}</div>
-                </div>
-              </Col>
-            </Row>
-
-            <div className="mb-4">
-              <label className="font-medium text-gray-600">完成进度：</label>
-              <div className="mt-2">
+            <Descriptions bordered column={2} size="small">
+              <Descriptions.Item label="工作标题">{selectedWork.work_title}</Descriptions.Item>
+              <Descriptions.Item label="工作类型">
+                <Tag color="blue">{workTypeMap[selectedWork.work_type as keyof typeof workTypeMap]}</Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label="优先级">
+                <Tag color={selectedWork.priority === 'urgent' ? 'red' : selectedWork.priority === 'high' ? 'orange' : 'default'}>
+                  {priorityMap[selectedWork.priority as keyof typeof priorityMap]}
+                </Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label="状态">
+                <Tag color={selectedWork.status === 'completed' ? 'success' : selectedWork.status === 'in_progress' ? 'processing' : 'default'}>
+                  {statusMap[selectedWork.status as keyof typeof statusMap]}
+                </Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label="拟奖励重点分">{selectedWork.total_score}</Descriptions.Item>
+              <Descriptions.Item label="完成进度">
                 <Progress percent={selectedWork.completion_rate} />
-              </div>
-            </div>
+              </Descriptions.Item>
+              <Descriptions.Item span={2} label="工作描述">
+                <div className="p-3 bg-gray-50 rounded">{selectedWork.work_description}</div>
+              </Descriptions.Item>
+              <Descriptions.Item label="开始日期">{dayjs(selectedWork.start_date).format('YYYY-MM-DD')}</Descriptions.Item>
+              <Descriptions.Item label="结束日期">{dayjs(selectedWork.end_date).format('YYYY-MM-DD')}</Descriptions.Item>
+            </Descriptions>
 
             {selectedWork.participants && selectedWork.participants.length > 0 && (
-              <div>
-                <Divider>参与人员</Divider>
+              <Card size="small" className="mt-4" title="参与人员">
                 <div className="space-y-2">
                   {selectedWork.participants.map(participant => (
                     <div key={participant.id} className="flex justify-between items-center p-3 bg-gray-50 rounded">
                       <div>
                         <span className="font-medium">{participant.user_name}</span>
-                        <Tag className="ml-2" color="blue">
-                          {roleMap[participant.role as keyof typeof roleMap]}
-                        </Tag>
+                        <Tag className="ml-2" color="blue">{roleMap[participant.role as keyof typeof roleMap]}</Tag>
                         {participant.contribution_description && (
-                          <div className="text-sm text-gray-600 mt-1">
-                            {participant.contribution_description}
-                          </div>
+                          <div className="text-sm text-gray-600 mt-1">{participant.contribution_description}</div>
                         )}
                       </div>
                       <div className="text-right">
-                        <div className="text-lg font-medium text-blue-600">
-                          {participant.individual_score}
-                        </div>
+                        <div className="text-lg font-medium text-blue-600">{participant.individual_score}</div>
                         <div className="text-xs text-gray-500">个人得分</div>
                       </div>
                     </div>
                   ))}
                 </div>
-              </div>
+              </Card>
             )}
           </div>
         )}

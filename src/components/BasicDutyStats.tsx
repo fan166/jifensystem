@@ -94,14 +94,14 @@ const BasicDutyStats: React.FC<BasicDutyStatsProps> = ({ currentUserId }) => {
       }
 
       const scoresData = await scoreAPI.getScores(filters);
-      // 只显示基本职责相关的记录
-      let basicDutyRecords = scoresData.filter(record => 
-        record.score_type_id?.includes('attendance') ||
-        record.score_type_id?.includes('learning') ||
-        record.score_type_id?.includes('discipline') ||
-        record.score_type_id?.includes('training') ||
-        record.score_type_id?.includes('violation')
-      );
+      // 只显示基本职责相关的记录（兼容中文与英文类型命名）
+      const basicDutyRecords = scoresData.filter(record => {
+        const type = record.score_type_id || '';
+        return (
+          (record as any).category === 'basic_duty' ||
+          /考勤|学习|培训|纪律|违纪|attendance|learning|training|discipline|violation/i.test(type)
+        );
+      });
       
       setScoreRecords(basicDutyRecords);
       calculateStats(basicDutyRecords, usersData);
@@ -134,27 +134,31 @@ const BasicDutyStats: React.FC<BasicDutyStatsProps> = ({ currentUserId }) => {
       }
     });
 
-    // 统计积分记录
+    // 统计扣分记录（按类型累计扣分），总分按 20 − 扣分合计 计算
     records.forEach(record => {
       if (!record.user_id || !userStatsMap.has(record.user_id)) return;
       
       const userStat = userStatsMap.get(record.user_id)!;
       userStat.recordCount++;
-      userStat.totalScore += record.score;
-
-      // 按类型分类统计
       const typeName = record.score_type_id || '';
-      if (typeName.includes('考勤')) {
-        userStat.attendanceScore += record.score;
-      } else if (typeName.includes('学习') || typeName.includes('培训')) {
-        userStat.learningScore += record.score;
-      } else if (typeName.includes('纪律') || typeName.includes('违纪')) {
-        userStat.disciplineScore += record.score;
+      const deduction = record.score < 0 ? Math.abs(record.score) : 0;
+
+      // 按类型分类统计（累计扣分为正数）
+      if (/考勤|attendance/i.test(typeName)) {
+        userStat.attendanceScore += deduction;
+      } else if (/学习|培训|learning|training/i.test(typeName)) {
+        userStat.learningScore += deduction;
+      } else if (/纪律|违纪|discipline|violation/i.test(typeName)) {
+        userStat.disciplineScore += deduction;
       }
     });
 
-    // 转换为数组并排序
+    // 计算每位用户的总分：20 − 三类扣分合计
     const userStatsArray = Array.from(userStatsMap.values())
+      .map(stat => ({
+        ...stat,
+        totalScore: Number((20 - (stat.attendanceScore + stat.learningScore + stat.disciplineScore)).toFixed(1))
+      }))
       .sort((a, b) => b.totalScore - a.totalScore)
       .map((stat, index) => ({ ...stat, rank: index + 1 }));
 
@@ -201,9 +205,9 @@ const BasicDutyStats: React.FC<BasicDutyStatsProps> = ({ currentUserId }) => {
     const bestPerformer = userStatsArray.length > 0 ? userStatsArray[0].userName : '';
     const worstPerformer = userStatsArray.length > 0 ? userStatsArray[userStatsArray.length - 1].userName : '';
     
-    const attendanceTotal = records.filter(r => r.score_type_id?.includes('attendance')).reduce((sum, r) => sum + r.score, 0);
-    const learningTotal = records.filter(r => r.score_type_id?.includes('learning') || r.score_type_id?.includes('training')).reduce((sum, r) => sum + r.score, 0);
-    const disciplineTotal = records.filter(r => r.score_type_id?.includes('discipline') || r.score_type_id?.includes('violation')).reduce((sum, r) => sum + r.score, 0);
+    const attendanceTotal = userStatsArray.reduce((sum, u) => sum + u.attendanceScore, 0);
+    const learningTotal = userStatsArray.reduce((sum, u) => sum + u.learningScore, 0);
+    const disciplineTotal = userStatsArray.reduce((sum, u) => sum + u.disciplineScore, 0);
 
 
 
@@ -253,10 +257,10 @@ const BasicDutyStats: React.FC<BasicDutyStatsProps> = ({ currentUserId }) => {
       '排名': stat.rank,
       '姓名': stat.userName,
       '部门': stat.departmentName,
-      '考勤积分': stat.attendanceScore,
-      '学习积分': stat.learningScore,
-      '纪律积分': stat.disciplineScore,
-      '总积分': stat.totalScore,
+      '考勤管理': stat.attendanceScore,
+      '基础学习': stat.learningScore,
+      '工作纪律': stat.disciplineScore,
+      '总分': stat.totalScore,
       '记录数': stat.recordCount
     }));
 
@@ -286,50 +290,45 @@ const BasicDutyStats: React.FC<BasicDutyStatsProps> = ({ currentUserId }) => {
       key: 'userName',
       width: 100
     },
+    
     {
-      title: '部门',
-      dataIndex: 'departmentName',
-      key: 'departmentName',
-      width: 120
-    },
-    {
-      title: '考勤积分',
+      title: '考勤管理',
       dataIndex: 'attendanceScore',
       key: 'attendanceScore',
       width: 90,
       render: (score) => (
-        <Tag color={score >= 0 ? 'green' : 'red'}>
-          {score > 0 ? '+' : ''}{score}
+        <Tag color={'red'}>
+          {score}
         </Tag>
       ),
       sorter: (a, b) => a.attendanceScore - b.attendanceScore
     },
     {
-      title: '学习积分',
+      title: '基础学习',
       dataIndex: 'learningScore',
       key: 'learningScore',
       width: 90,
       render: (score) => (
-        <Tag color={score >= 0 ? 'green' : 'red'}>
-          {score > 0 ? '+' : ''}{score}
+        <Tag color={'red'}>
+          {score}
         </Tag>
       ),
       sorter: (a, b) => a.learningScore - b.learningScore
     },
     {
-      title: '纪律积分',
+      title: '工作纪律',
       dataIndex: 'disciplineScore',
       key: 'disciplineScore',
       width: 90,
       render: (score) => (
-        <Tag color={score >= 0 ? 'green' : 'red'}>
-          {score > 0 ? '+' : ''}{score}
+        <Tag color={'red'}>
+          {score}
         </Tag>
       ),
       sorter: (a, b) => a.disciplineScore - b.disciplineScore
     },
     {
-      title: '总积分',
+      title: '总分',
       dataIndex: 'totalScore',
       key: 'totalScore',
       width: 90,
@@ -482,22 +481,22 @@ const BasicDutyStats: React.FC<BasicDutyStatsProps> = ({ currentUserId }) => {
       <Row gutter={16} className="mb-4">
         <Col span={6}>
           <Card>
-            <Statistic title="基本职责积分" value={overallStats.totalRecords} prefix={<BarChartOutlined />} />
+            <Statistic title="扣分记录数" value={overallStats.totalRecords} prefix={<BarChartOutlined />} />
           </Card>
         </Col>
         <Col span={6}>
           <Card>
-            <Statistic title="考勤管理分" value={overallStats.attendanceTotal} precision={1} suffix="分" valueStyle={{ color: overallStats.attendanceTotal >= 0 ? '#3f8600' : '#cf1322' }} />
+            <Statistic title="考勤管理扣分" value={overallStats.attendanceTotal} precision={1} suffix="分" valueStyle={{ color: overallStats.attendanceTotal >= 0 ? '#3f8600' : '#cf1322' }} />
           </Card>
         </Col>
         <Col span={6}>
           <Card>
-            <Statistic title="基础学习分" value={overallStats.learningTotal} precision={1} suffix="分" valueStyle={{ color: overallStats.learningTotal >= 0 ? '#3f8600' : '#cf1322' }} />
+            <Statistic title="基础学习扣分" value={overallStats.learningTotal} precision={1} suffix="分" valueStyle={{ color: overallStats.learningTotal >= 0 ? '#3f8600' : '#cf1322' }} />
           </Card>
         </Col>
         <Col span={6}>
           <Card>
-            <Statistic title="工作纪律分" value={overallStats.disciplineTotal} precision={1} suffix="分" valueStyle={{ color: overallStats.disciplineTotal >= 0 ? '#3f8600' : '#cf1322' }} />
+            <Statistic title="工作纪律扣分" value={overallStats.disciplineTotal} precision={1} suffix="分" valueStyle={{ color: overallStats.disciplineTotal >= 0 ? '#3f8600' : '#cf1322' }} />
           </Card>
         </Col>
       </Row>
@@ -600,10 +599,10 @@ const BasicDutyStats: React.FC<BasicDutyStatsProps> = ({ currentUserId }) => {
                 title: '考勤管理分',
                 key: 'attendance_score',
                 render: (_, record: any) => {
-                  if (record.score_type_id === 'attendance') {
+                  if (/考勤|attendance/i.test(record.score_type_id || '')) {
                     return (
-                      <span style={{ color: record.score >= 0 ? '#52c41a' : '#ff4d4f' }}>
-                        {record.score > 0 ? '+' : ''}{record.score}
+                      <span style={{ color: '#ff4d4f' }}>
+                        {Math.abs(record.score)}
                       </span>
                     );
                   }
@@ -614,10 +613,10 @@ const BasicDutyStats: React.FC<BasicDutyStatsProps> = ({ currentUserId }) => {
                 title: '基础学习分',
                 key: 'learning_score',
                 render: (_, record: any) => {
-                  if (record.score_type_id === 'learning') {
+                  if (/学习|培训|learning|training/i.test(record.score_type_id || '')) {
                     return (
-                      <span style={{ color: record.score >= 0 ? '#52c41a' : '#ff4d4f' }}>
-                        {record.score > 0 ? '+' : ''}{record.score}
+                      <span style={{ color: '#ff4d4f' }}>
+                        {Math.abs(record.score)}
                       </span>
                     );
                   }
@@ -628,10 +627,10 @@ const BasicDutyStats: React.FC<BasicDutyStatsProps> = ({ currentUserId }) => {
                 title: '工作纪律分',
                 key: 'discipline_score',
                 render: (_, record: any) => {
-                  if (record.score_type_id === 'discipline') {
+                  if (/纪律|违纪|discipline|violation/i.test(record.score_type_id || '')) {
                     return (
-                      <span style={{ color: record.score >= 0 ? '#52c41a' : '#ff4d4f' }}>
-                        {record.score > 0 ? '+' : ''}{record.score}
+                      <span style={{ color: '#ff4d4f' }}>
+                        {Math.abs(record.score)}
                       </span>
                     );
                   }

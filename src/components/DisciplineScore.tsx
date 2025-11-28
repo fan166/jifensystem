@@ -204,7 +204,7 @@ const DisciplineScore: React.FC<DisciplineScoreProps> = ({ readonly = false, cur
     const totalDeduction = deductionRecords.reduce((sum, record) => sum + Math.abs(record.score), 0);
 
     const totalBonus = bonusRecords.reduce((sum, record) => sum + record.score, 0);
-    const netScore = totalBonus - totalDeduction;
+    const avgDeduction = deductionRecords.length ? (totalDeduction / deductionRecords.length) : 0;
     const uniqueUsers = new Set(records.map(r => r.user_id)).size;
 
 
@@ -222,7 +222,7 @@ const DisciplineScore: React.FC<DisciplineScoreProps> = ({ readonly = false, cur
     setStatistics({
       totalRecords: records.length,
       totalDeduction: Number(totalDeduction.toFixed(1)),
-      netScore: Number(netScore.toFixed(1)),
+      netScore: Number(avgDeduction.toFixed(1)),
       criticalCount,
       highCount
     });
@@ -390,6 +390,16 @@ const DisciplineScore: React.FC<DisciplineScoreProps> = ({ readonly = false, cur
   // 响应式列配置
   const getResponsiveColumns = (): ColumnsType<ScoreRecord> => {
     const baseColumns: ColumnsType<ScoreRecord> = [
+      {
+        title: '姓名',
+        dataIndex: ['user','name'] as any,
+        key: 'userName',
+        width: 120,
+        fixed: 'left',
+        render: (_: any, record) => record.user?.name || '未知',
+        responsive: ['xs','sm','md','lg','xl']
+      },
+      
 
 
       {
@@ -406,16 +416,6 @@ const DisciplineScore: React.FC<DisciplineScoreProps> = ({ readonly = false, cur
         sorter: (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
         sortOrder: sortedInfo.columnKey === 'created_at' ? sortedInfo.order : null,
         responsive: ['xs', 'sm', 'md', 'lg', 'xl']
-      },
-      {
-        title: '纪律类型',
-        dataIndex: 'score_type_id',
-        key: 'scoreType',
-        width: 150,
-        render: (typeId) => <Tag color="orange">{typeId}</Tag>,
-        sorter: (a, b) => (a.score_type_id || '').localeCompare(b.score_type_id || ''),
-        sortOrder: sortedInfo.columnKey === 'scoreType' ? sortedInfo.order : null,
-        responsive: ['md', 'lg', 'xl']
       },
       {
         title: '扣分值',
@@ -579,59 +579,18 @@ const DisciplineScore: React.FC<DisciplineScoreProps> = ({ readonly = false, cur
         <Col span={8}>
           <Card>
             <Statistic 
-              title="净得分" 
+              title="平均扣分" 
               value={statistics.netScore} 
               precision={1} 
               suffix="分" 
-              valueStyle={{ color: statistics.netScore >= 0 ? '#3f8600' : '#cf1322' }}
+              valueStyle={{ color: '#cf1322' }}
             />
           </Card>
         </Col>
 
       </Row>
 
-        {/* 个人改善建议 */}
-        {improvementSuggestions.length > 0 && (
-          <Card className="mb-6" title="个人改善建议">
-            <Row gutter={[16, 16]}>
-              {improvementSuggestions.map((suggestion, index) => (
-                <Col xs={24} sm={12} lg={8} key={index}>
-                  <div className={`p-4 rounded-lg border-l-4 ${
-                    suggestion.color === 'red' ? 'bg-red-50 border-red-400' :
-                    suggestion.color === 'orange' ? 'bg-orange-50 border-orange-400' :
-                    suggestion.color === 'blue' ? 'bg-blue-50 border-blue-400' :
-                    suggestion.color === 'green' ? 'bg-green-50 border-green-400' :
-                    'bg-gray-50 border-gray-400'
-                  }`}>
-                    <div className="flex items-start space-x-3">
-                      <span className="text-2xl">{suggestion.icon}</span>
-                      <div className="flex-1">
-                        <h4 className={`font-medium mb-2 ${
-                          suggestion.color === 'red' ? 'text-red-700' :
-                          suggestion.color === 'orange' ? 'text-orange-700' :
-                          suggestion.color === 'blue' ? 'text-blue-700' :
-                          suggestion.color === 'green' ? 'text-green-700' :
-                          'text-gray-700'
-                        }`}>
-                          {suggestion.title}
-                        </h4>
-                        <p className={`text-sm ${
-                          suggestion.color === 'red' ? 'text-red-600' :
-                          suggestion.color === 'orange' ? 'text-orange-600' :
-                          suggestion.color === 'blue' ? 'text-blue-600' :
-                          suggestion.color === 'green' ? 'text-green-600' :
-                          'text-gray-600'
-                        }`}>
-                          {suggestion.content}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </Col>
-              ))}
-            </Row>
-          </Card>
-        )}
+        
 
 
 

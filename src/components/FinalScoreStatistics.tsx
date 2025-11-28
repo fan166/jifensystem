@@ -65,11 +65,12 @@ export const FinalScoreStatistics: React.FC = () => {
   const [statistics, setStatistics] = useState<ScoreStatistics | null>(null);
   const [loading, setLoading] = useState(true);
   const [calculating, setCalculating] = useState(false);
-  const [selectedPeriod, setSelectedPeriod] = useState('2024');
+  const [selectedPeriod, setSelectedPeriod] = useState(String(new Date().getFullYear()));
   const [selectedDepartment, setSelectedDepartment] = useState('all');
   const [departments, setDepartments] = useState<string[]>([]);
   const { user } = useAuth();
-  const { hasPermission } = useDynamicPermissionCheck('calculate_final_scores');
+  const calcPerm = useDynamicPermissionCheck('calculate_final_scores');
+  const exportPerm = useDynamicPermissionCheck('export_final_scores');
   const { userRole, isAdmin } = useRoleCheck();
   const [permissions, setPermissions] = useState({
     canView: false,
@@ -84,19 +85,17 @@ export const FinalScoreStatistics: React.FC = () => {
 
   useEffect(() => {
     fetchFinalScores();
-    calculateStatistics();
   }, [selectedPeriod, selectedDepartment, userRole, user?.id]);
 
-  const checkPermissions = async () => {
-    const [canCalculate, canExport] = await Promise.all([
-      hasPermission,
-      (await useDynamicPermissionCheck('export_final_scores')).hasPermission
-    ]);
+  useEffect(() => {
+    calculateStatistics();
+  }, [finalScores]);
 
+  const checkPermissions = async () => {
     setPermissions({
-      canView: true, // 所有用户都可以查看
-      canCalculate: canCalculate || isAdmin,
-      canExport: canExport || isAdmin
+      canView: true,
+      canCalculate: calcPerm.hasPermission || isAdmin,
+      canExport: exportPerm.hasPermission || isAdmin
     });
   };
 
@@ -104,13 +103,13 @@ export const FinalScoreStatistics: React.FC = () => {
     try {
       const { data, error } = await supabase
         .from('users')
-        .select('department')
-        .eq('is_active', true);
+        .select('department:departments(name)');
 
       if (error) throw error;
-      
-      const uniqueDepartments = [...new Set(data?.map(u => u.department) || [])];
-      setDepartments(uniqueDepartments.filter(Boolean));
+
+      const names = (data || []).map((u: any) => Array.isArray(u.department) ? (u.department[0]?.name ?? '') : (u.department?.name ?? ''));
+      const uniqueDepartments = [...new Set(names)].filter(Boolean);
+      setDepartments(uniqueDepartments);
     } catch (error) {
       console.error('获取部门列表失败:', error);
     }
@@ -119,29 +118,118 @@ export const FinalScoreStatistics: React.FC = () => {
   const fetchFinalScores = async () => {
     setLoading(true);
     try {
-      let query = supabase
+      // 基础查询（不依赖嵌套关系）
+      let { data: rows, error } = await supabase
         .from('final_performance_scores')
-        .select(`
-          *,
-          user:user_id(id, name, department, role)
-        `)
+        .select('*')
         .eq('period', selectedPeriod)
         .order('final_score', { ascending: false });
+      // 若表不存在则回退到按测评记录计算
+      if (error && (error as any).code === 'PGRST205') {
+        rows = [];
+      } else if (error) {
+        throw error;
+      }
+      rows = rows || [];
 
-      // 如果是普通职工，只能查看自己的积分
+      // 角色过滤（员工仅查看自己）
+      let filteredRows = rows;
       if (userRole === 'employee') {
-        query = query.eq('user_id', user?.id);
-      } else {
-        // 管理员可以按部门筛选
-        if (selectedDepartment !== 'all') {
-          query = query.eq('user.department', selectedDepartment);
-        }
+        filteredRows = filteredRows.filter(r => r.user_id === user?.id);
       }
 
-      const { data, error } = await query;
+      // 关联用户并取部门名称
+      const userIds = Array.from(new Set(filteredRows.map(r => r.user_id).filter(Boolean)));
+      let usersMap = new Map<string, any>();
+      if (userIds.length > 0) {
+        const { data: usersData } = await supabase
+          .from('users')
+          .select('id, name, role, department:departments(name)')
+          .in('id', userIds);
+        (usersData || []).forEach((u: any) => usersMap.set(u.id, {
+          id: u.id,
+          name: u.name,
+          role: u.role,
+          department: Array.isArray(u.department) ? (u.department?.[0]?.name ?? '未分配部门') : (u.department?.name ?? '未分配部门')
+        }));
+      }
 
-      if (error) throw error;
-      setFinalScores(data || []);
+      // 管理员按部门筛选（前端过滤）
+      if (userRole !== 'employee' && selectedDepartment !== 'all') {
+        filteredRows = filteredRows.filter(r => {
+          const u = usersMap.get(r.user_id);
+          return (u?.department || '') === selectedDepartment;
+        });
+      }
+
+      let enriched: any[] = filteredRows.map(r => ({
+        ...r,
+        user: usersMap.get(r.user_id)
+      }));
+
+      // 若最终积分表无数据，则从测评表计算
+      if (enriched.length === 0) {
+        const { data: evals, error: evalErr } = await supabase
+          .from('performance_evaluations')
+          .select('evaluated_user_id, evaluation_type, total_score, status, period')
+          .eq('period', selectedPeriod)
+          .in('status', ['approved', 'submitted']);
+        if (evalErr) throw evalErr;
+        const byUser = new Map<string, { daily: number[]; annual: number[] }>();
+        (evals || []).forEach((e: any) => {
+          const uid = e.evaluated_user_id;
+          if (!uid) return;
+          const bucket = byUser.get(uid) || { daily: [], annual: [] };
+          if (e.evaluation_type === 'daily') bucket.daily.push(Number(e.total_score) || 0);
+          else if (e.evaluation_type === 'annual') bucket.annual.push(Number(e.total_score) || 0);
+          byUser.set(uid, bucket);
+        });
+        const computedRows = Array.from(byUser.entries()).map(([uid, buckets]) => {
+          const dailyAvg = buckets.daily.length ? buckets.daily.reduce((a, b) => a + b, 0) / buckets.daily.length : 0;
+          const annualAvg = buckets.annual.length ? buckets.annual.reduce((a, b) => a + b, 0) / buckets.annual.length : 0;
+          const final = Number((dailyAvg + annualAvg).toFixed(2));
+          return {
+            id: `${uid}-${selectedPeriod}`,
+            user_id: uid,
+            period: selectedPeriod,
+            daily_avg_score: Number(dailyAvg.toFixed(2)),
+            annual_avg_score: Number(annualAvg.toFixed(2)),
+            final_score: final,
+            daily_evaluation_count: buckets.daily.length,
+            annual_evaluation_count: buckets.annual.length,
+            calculation_details: null,
+            calculated_at: new Date().toISOString(),
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          } as any;
+        });
+        // 关联用户信息并应用部门筛选
+        const compUserIds = computedRows.map(r => r.user_id);
+        const { data: compUsers } = await supabase
+          .from('users')
+          .select('id, name, role, department:departments(name)')
+          .in('id', compUserIds);
+        const compMap = new Map<string, any>();
+        (compUsers || []).forEach((u: any) => compMap.set(u.id, {
+          id: u.id,
+          name: u.name,
+          role: u.role,
+          department: Array.isArray(u.department) ? (u.department?.[0]?.name ?? '未分配部门') : (u.department?.name ?? '未分配部门')
+        }));
+
+        let compFiltered = computedRows;
+        if (userRole === 'employee') compFiltered = compFiltered.filter(r => r.user_id === user?.id);
+        if (userRole !== 'employee' && selectedDepartment !== 'all') {
+          compFiltered = compFiltered.filter(r => {
+            const u = compMap.get(r.user_id);
+            return (u?.department || '') === selectedDepartment;
+          });
+        }
+
+        enriched = compFiltered.map(r => ({ ...r, user: compMap.get(r.user_id) })) as any;
+      }
+
+      setFinalScores(enriched);
     } catch (error) {
       console.error('获取最终积分失败:', error);
       toast.error('获取最终积分失败');
@@ -152,42 +240,26 @@ export const FinalScoreStatistics: React.FC = () => {
 
   const calculateStatistics = async () => {
     try {
-      let query = supabase
-        .from('final_performance_scores')
-        .select('final_score, user:user_id(department)')
-        .eq('period', selectedPeriod);
-
-      // 如果是普通职工，只统计自己的数据
-      if (userRole === 'employee') {
-        query = query.eq('user_id', user?.id);
-      } else {
-        // 管理员可以按部门筛选
-        if (selectedDepartment !== 'all') {
-          query = query.eq('user.department', selectedDepartment);
-        }
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-
-      if (!data || data.length === 0) {
+      const rows = finalScores || [];
+      if (!rows.length) {
         setStatistics(null);
         return;
       }
-
-      const scores = data.map(item => item.final_score);
+      const scores = rows.map((r: any) => r.final_score).filter((s: any) => typeof s === 'number');
+      if (!scores.length) {
+        setStatistics(null);
+        return;
+      }
       const totalUsers = scores.length;
-      const avgScore = scores.reduce((sum, score) => sum + score, 0) / totalUsers;
+      const avgScore = scores.reduce((sum: number, score: number) => sum + score, 0) / totalUsers;
       const maxScore = Math.max(...scores);
       const minScore = Math.min(...scores);
-
       const distribution = {
-        excellent: scores.filter(s => s >= 90).length,
-        good: scores.filter(s => s >= 80 && s < 90).length,
-        average: scores.filter(s => s >= 70 && s < 80).length,
-        poor: scores.filter(s => s < 70).length
+        excellent: scores.filter((s: number) => s >= 90).length,
+        good: scores.filter((s: number) => s >= 80 && s < 90).length,
+        average: scores.filter((s: number) => s >= 70 && s < 80).length,
+        poor: scores.filter((s: number) => s < 70).length
       };
-
       setStatistics({
         total_users: totalUsers,
         avg_final_score: Math.round(avgScore * 100) / 100,

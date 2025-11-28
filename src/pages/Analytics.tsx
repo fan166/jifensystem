@@ -42,6 +42,9 @@ import {
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
+import { supabase } from '../lib/supabase';
+import { useAuth } from '../hooks/useAuth';
+import { useRoleCheck } from '../hooks/usePermissionCheck';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -82,6 +85,8 @@ const Analytics: React.FC = () => {
     growth: 0,
     growthPercent: 0
   });
+  const { user } = useAuth();
+  const { userRole } = useRoleCheck();
 
   useEffect(() => {
     loadAnalyticsData();
@@ -90,19 +95,247 @@ const Analytics: React.FC = () => {
   const loadAnalyticsData = async () => {
     setLoading(true);
     try {
-      const mockTrendData: TrendData[] = [];
-      const mockCategoryData: CategoryData[] = [];
-      const mockDepartmentTrends: DepartmentTrend[] = [];
+      const now = dayjs();
+      let months: string[] = [];
+      if (timeRange === 'custom' && dateRange) {
+        const start = dayjs(dateRange[0]).startOf('month');
+        const end = dayjs(dateRange[1]).startOf('month');
+        let cursor = start.clone();
+        while (cursor.isBefore(end) || cursor.isSame(end)) {
+          months.push(cursor.format('YYYY-MM'));
+          cursor = cursor.add(1, 'month');
+        }
+      } else {
+        const countMap: Record<string, number> = { week: 1, month: 1, quarter: 3, year: 12 };
+        const count = countMap[timeRange] ?? 1;
+        for (let i = count - 1; i >= 0; i--) {
+          months.push(now.subtract(i, 'month').format('YYYY-MM'));
+        }
+      }
 
-      setTrendData(mockTrendData);
-      setCategoryData(mockCategoryData);
-      setDepartmentTrends(mockDepartmentTrends);
+      const BASIC_DUTY_CATEGORY = 'basic_duty';
+
+      const allTrend: TrendData[] = [];
+      let sumBasic = 0;
+      let sumPerf = 0;
+      let sumKey = 0;
+      let sumReward = 0;
+
+      for (const m of months) {
+        const { data: evals } = await supabase
+          .from('performance_evaluations')
+          .select('evaluated_user_id, evaluation_type, total_score, status, period')
+          .eq('period', m)
+          .in('status', ['approved', 'submitted'])
+          .limit(2000);
+        const buckets = new Map<string, { sum: number; count: number }>();
+        (evals || []).forEach((e: any) => {
+          const uid = e.evaluated_user_id;
+          if (!uid) return;
+          if (userRole === 'employee' && uid !== user?.id) return;
+          const b = buckets.get(uid) || { sum: 0, count: 0 };
+          b.sum += Number(e.total_score) || 0;
+          b.count += 1;
+          buckets.set(uid, b);
+        });
+        const perfSum = buckets.size
+          ? Array.from(buckets.values()).reduce((acc, b) => acc + (b.sum / Math.max(1, b.count)), 0)
+          : 0;
+
+        const { data: dutyScores } = await supabase
+          .from('scores')
+          .select('user_id, score, period, score_type:score_types(category)')
+          .eq('period', m)
+          .limit(5000);
+        const basicByUser = new Map<string, number>();
+        (dutyScores || []).forEach((s: any) => {
+          const uid = s.user_id;
+          if (!uid) return;
+          if (userRole === 'employee' && uid !== user?.id) return;
+          const category = s?.score_type?.category || '';
+          if (category !== BASIC_DUTY_CATEGORY) return;
+          const prev = basicByUser.get(uid) || 0;
+          const val = Number(s.score) || 0;
+          basicByUser.set(uid, prev + (val < 0 ? Math.abs(val) : 0));
+        });
+        const basicSum = basicByUser.size
+          ? Array.from(basicByUser.values()).reduce((acc, ded) => acc + Math.max(0, 20 - ded), 0)
+          : 0;
+
+        const { data: rewards } = await supabase
+          .from('reward_score_records')
+          .select('user_id, score, award_period')
+          .eq('award_period', m)
+          .limit(5000);
+        const rewardByUser = new Map<string, number>();
+        (rewards || []).forEach((r: any) => {
+          const uid = r.user_id;
+          if (!uid) return;
+          if (userRole === 'employee' && uid !== user?.id) return;
+          const prev = rewardByUser.get(uid) || 0;
+          rewardByUser.set(uid, prev + (Number(r.score) || 0));
+        });
+        const rewardSum = rewardByUser.size
+          ? Array.from(rewardByUser.values()).reduce((acc, v) => acc + v, 0)
+          : 0;
+
+        const keyWork = 0;
+        const total = Number((perfSum + basicSum + rewardSum + keyWork).toFixed(2));
+        allTrend.push({
+          date: dayjs(m + '-01').toISOString(),
+          totalScore: total,
+          basicDuty: Number(basicSum.toFixed(2)),
+          workPerformance: Number(perfSum.toFixed(2)),
+          keyWork: Number(keyWork.toFixed(2)),
+          performanceReward: Number(rewardSum.toFixed(2))
+        });
+
+        sumBasic += basicSum;
+        sumPerf += perfSum;
+        sumKey += keyWork;
+        sumReward += rewardSum;
+      }
+
+      setTrendData(allTrend);
+
+      const cat: CategoryData[] = [
+        { name: '基本职责', value: Number(sumBasic.toFixed(2)), color: '#52c41a' },
+        { name: '工作实绩', value: Number(sumPerf.toFixed(2)), color: '#faad14' },
+        { name: '重点工作', value: Number(sumKey.toFixed(2)), color: '#722ed1' },
+        { name: '绩效奖励', value: Number(sumReward.toFixed(2)), color: '#eb2f96' }
+      ];
+      setCategoryData(cat);
+
+      const latest = allTrend[allTrend.length - 1]?.totalScore || 0;
+      const prev = allTrend[allTrend.length - 2]?.totalScore || 0;
+      const growth = Number((latest - prev).toFixed(2));
+      const growthPercent = prev ? Number(((growth / prev) * 100).toFixed(1)) : 0;
+      const avg = allTrend.length ? Number((allTrend.reduce((a, d) => a + d.totalScore, 0) / allTrend.length).toFixed(2)) : 0;
       setSummaryStats({
-        totalScore: 0,
-        avgScore: 0,
-        growth: 0,
-        growthPercent: 0
+        totalScore: latest,
+        avgScore: avg,
+        growth,
+        growthPercent
       });
+
+      const currentMonth = months[months.length - 1];
+      const lastMonth = months[months.length - 2];
+      const deptMap = new Map<string, { current: number[]; last: number[] }>();
+
+      const { data: usersData } = await supabase
+        .from('users')
+        .select('id, department:departments(name)')
+        .limit(5000);
+
+      const usersList = (usersData || []).map((u: any) => ({
+        id: u.id,
+        department: Array.isArray(u.department) ? (u.department?.[0]?.name || '-') : (u.department?.name || u.department || '-')
+      })).filter(u => (userRole !== 'employee') || (u.id === user?.id));
+
+      const computeMonthTotals = async (m: string) => {
+        const { data: evalsM } = await supabase
+          .from('performance_evaluations')
+          .select('evaluated_user_id, total_score, status, period')
+          .eq('period', m)
+          .in('status', ['approved', 'submitted'])
+          .limit(5000);
+        const perfByUser = new Map<string, { sum: number; count: number }>();
+        (evalsM || []).forEach((e: any) => {
+          const uid = e.evaluated_user_id;
+          if (!uid) return;
+          if (userRole === 'employee' && uid !== user?.id) return;
+          const b = perfByUser.get(uid) || { sum: 0, count: 0 };
+          b.sum += Number(e.total_score) || 0;
+          b.count += 1;
+          perfByUser.set(uid, b);
+        });
+
+        const { data: dutyM } = await supabase
+          .from('scores')
+          .select('user_id, score, period, score_type:score_types(category)')
+          .eq('period', m)
+          .limit(5000);
+        const basicByUserM = new Map<string, number>();
+        (dutyM || []).forEach((s: any) => {
+          const uid = s.user_id;
+          if (!uid) return;
+          if (userRole === 'employee' && uid !== user?.id) return;
+          const category = s?.score_type?.category || '';
+          if (category !== BASIC_DUTY_CATEGORY) return;
+          const prev = basicByUserM.get(uid) || 0;
+          const val = Number(s.score) || 0;
+          basicByUserM.set(uid, prev + (val < 0 ? Math.abs(val) : 0));
+        });
+
+        const { data: rewardsM } = await supabase
+          .from('reward_score_records')
+          .select('user_id, score, award_period')
+          .eq('award_period', m)
+          .limit(5000);
+        const rewardByUserM = new Map<string, number>();
+        (rewardsM || []).forEach((r: any) => {
+          const uid = r.user_id;
+          if (!uid) return;
+          if (userRole === 'employee' && uid !== user?.id) return;
+          const prev = rewardByUserM.get(uid) || 0;
+          rewardByUserM.set(uid, prev + (Number(r.score) || 0));
+        });
+
+        return { perfByUser, basicByUserM, rewardByUserM };
+      };
+
+      let perfCur = new Map<string, { sum: number; count: number }>(), perfPrev = new Map<string, { sum: number; count: number }>();
+      let basicCur = new Map<string, number>(), basicPrev = new Map<string, number>();
+      let rewardCur = new Map<string, number>(), rewardPrev = new Map<string, number>();
+
+      if (currentMonth) {
+        const res = await computeMonthTotals(currentMonth);
+        perfCur = res.perfByUser;
+        basicCur = res.basicByUserM;
+        rewardCur = res.rewardByUserM;
+      }
+      if (lastMonth) {
+        const res = await computeMonthTotals(lastMonth);
+        perfPrev = res.perfByUser;
+        basicPrev = res.basicByUserM;
+        rewardPrev = res.rewardByUserM;
+      }
+
+      usersList.forEach(u => {
+        const dept = u.department || '-';
+        const curPerf = perfCur.get(u.id);
+        const curPerfAvg = curPerf ? (curPerf.sum / Math.max(1, curPerf.count)) : 0;
+        const curBasic = Math.max(0, 20 - (basicCur.get(u.id) || 0));
+        const curReward = rewardCur.get(u.id) || 0;
+        const curTotal = Number((curPerfAvg + curBasic + curReward).toFixed(2));
+
+        const prevPerf = perfPrev.get(u.id);
+        const prevPerfAvg = prevPerf ? (prevPerf.sum / Math.max(1, prevPerf.count)) : 0;
+        const prevBasic = Math.max(0, 20 - (basicPrev.get(u.id) || 0));
+        const prevReward = rewardPrev.get(u.id) || 0;
+        const prevTotal = Number((prevPerfAvg + prevBasic + prevReward).toFixed(2));
+
+        const bucket = deptMap.get(dept) || { current: [], last: [] };
+        bucket.current.push(curTotal);
+        bucket.last.push(prevTotal);
+        deptMap.set(dept, bucket);
+      });
+
+      const deptRows: DepartmentTrend[] = Array.from(deptMap.entries()).map(([dept, vals]) => {
+        const curSum = vals.current.length ? vals.current.reduce((a, v) => a + v, 0) : 0;
+        const lastSum = vals.last.length ? vals.last.reduce((a, v) => a + v, 0) : 0;
+        const change = Number((curSum - lastSum).toFixed(2));
+        const changePercent = lastSum ? Number(((change / lastSum) * 100).toFixed(1)) : 0;
+        return {
+          department: dept,
+          currentMonth: Number(curSum.toFixed(2)),
+          lastMonth: Number(lastSum.toFixed(2)),
+          change,
+          changePercent
+        };
+      }).sort((a, b) => b.currentMonth - a.currentMonth);
+
+      setDepartmentTrends(deptRows);
     } catch (error) {
       console.error('加载分析数据失败:', error);
     } finally {

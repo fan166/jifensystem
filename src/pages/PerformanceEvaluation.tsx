@@ -4,7 +4,6 @@ import { UserOutlined, TeamOutlined, BarChartOutlined } from '@ant-design/icons'
 import { useAuthStore } from '../stores/authStore';
 import { useEvaluationVisibility } from '../hooks/useEvaluationVisibility';
 // 懒加载大型组件（命名导出需要映射为默认导出）
-const PersonalScoreView = lazy(() => import('../components/PersonalScoreView').then(m => ({ default: m.PersonalScoreView })));
 const DailyEvaluationTab = lazy(() => import('../components/DailyEvaluationTab').then(m => ({ default: m.DailyEvaluationTab })));
 const AnnualEvaluationTab = lazy(() => import('../components/AnnualEvaluationTab').then(m => ({ default: m.AnnualEvaluationTab })));
 const FinalScoreStatistics = lazy(() => import('../components/FinalScoreStatistics').then(m => ({ default: m.FinalScoreStatistics })));
@@ -50,19 +49,7 @@ const PerformanceEvaluationPage: React.FC = () => {
       });
     }
 
-    // 我的积分 - 除系统管理员外的所有用户都可以查看自己的积分
-    if (!isAdmin) {
-      items.push({
-        key: 'personal',
-        label: (
-          <span>
-            <BarChartOutlined />
-            我的积分
-          </span>
-        ),
-        children: <PersonalScoreView />
-      });
-    }
+    
 
     // 日常实绩评价 - 普通用户可见性受开关控制
     if (isAuthenticated && !hasAdminAccess && user?.role === 'employee' && dailyVisible) {
@@ -116,7 +103,7 @@ const PerformanceEvaluationPage: React.FC = () => {
     const items = generateTabItems();
     const exists = items.some(item => item.key === activeTab);
     if (!exists) {
-      const fallback = items[0]?.key || (!isAdmin ? 'personal' : undefined);
+      const fallback = items[0]?.key;
       if (fallback) setActiveTab(fallback);
     }
   }, [dailyVisible, annualVisible, user?.role, isLeader]);

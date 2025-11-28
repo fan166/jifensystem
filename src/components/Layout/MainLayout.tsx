@@ -43,21 +43,9 @@ const MainLayout: React.FC = () => {
   const getMenuItems = (): MenuProps['items'] => {
     const baseItems: NonNullable<MenuProps['items']> = [
       {
-        key: 'dashboard-menu',
+        key: '/ranking',
         icon: <DashboardOutlined />,
-        label: '首页仪表板',
-        children: [
-          {
-            key: '/ranking',
-            icon: <TrophyOutlined />,
-            label: '积分排行榜',
-          },
-          {
-            key: '/analytics',
-            icon: <BarChartOutlined />,
-            label: '趋势分析',
-          },
-        ],
+        label: '积分排行榜',
       },
       // “积分管理”子菜单稍后插入，允许按可见性动态隐藏入口
     ];
@@ -94,6 +82,11 @@ const MainLayout: React.FC = () => {
     // 普通职工在两个开关都关闭时隐藏“工作实绩积分”入口
     if (user?.role === 'employee' && !visibilityLoading && !dailyVisible && !annualVisible) {
       scoreChildren = scoreChildren.filter(item => item && (item as any).key !== '/performance-evaluation');
+    }
+
+    // 管理员登录状态下隐藏“我的积分详情”入口
+    if (user?.role === 'system_admin' || user?.role === 'assessment_admin') {
+      scoreChildren = scoreChildren.filter(item => item && (item as any).key !== '/my-score-details');
     }
 
     baseItems.push({
@@ -200,7 +193,6 @@ const MainLayout: React.FC = () => {
   // 生成面包屑导航
   const getBreadcrumbItems = () => {
     const pathMap: Record<string, string> = {
-      '/analytics': '趋势分析',
       '/my-score-details': '我的积分详情',
       '/basic-duty-score': '基本职责积分',
       '/performance-evaluation': '工作实绩积分',
@@ -217,15 +209,9 @@ const MainLayout: React.FC = () => {
     const breadcrumbItems = [{ title: location.pathname === '/notifications' ? '通知公告' : '首页' }];
 
     // 为仪表板相关页面添加层级导航
-    if (location.pathname === '/analytics' || location.pathname === '/ranking') {
-      breadcrumbItems.push({ title: '首页仪表板' });
-      const currentPageTitle = pathMap[location.pathname] || '未知页面';
+    const currentPageTitle = pathMap[location.pathname] || '未知页面';
+    if (currentPageTitle !== '未知页面') {
       breadcrumbItems.push({ title: currentPageTitle });
-    } else {
-      const currentPageTitle = pathMap[location.pathname] || '未知页面';
-      if (currentPageTitle !== '未知页面') {
-        breadcrumbItems.push({ title: currentPageTitle });
-      }
     }
 
     return breadcrumbItems;

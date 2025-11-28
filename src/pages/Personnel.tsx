@@ -3,6 +3,9 @@ import { Card, Table, Button, Modal, Form, Input, Select, Space, message, Tabs, 
 import { PlusOutlined, EditOutlined, DeleteOutlined, UserOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { userAPI, departmentAPI } from '../services/api';
+import { supabase } from '../lib/supabase';
+import { useAuthStore } from '../stores/authStore';
+import PermissionWrapper from '../components/PermissionWrapper';
 import type { User, Department } from '../lib/supabase';
 
 const { Option } = Select;
@@ -25,6 +28,9 @@ const Personnel: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [users, setUsers] = useState<UserWithDepartment[]>([]);
   const [departments, setDepartments] = useState<DepartmentWithCount[]>([]);
+
+  const { hasPermission } = useAuthStore();
+  const canManage = hasPermission('write');
 
   // 加载数据
   useEffect(() => {
@@ -68,7 +74,7 @@ const Personnel: React.FC = () => {
     }
   };
 
-  const userColumns: ColumnsType<User> = [
+  const baseUserColumns: ColumnsType<User> = [
     {
       title: '姓名',
       dataIndex: 'name',
@@ -96,9 +102,12 @@ const Personnel: React.FC = () => {
       render: (role) => {
         const roleMap = {
           system_admin: '系统管理员',
+          assessment_admin: '考核办管理员',
           evaluator: '考核办管理员',
           leader: '分管领导',
-          employee: '普通职工'
+          employee: '普通职工',
+          admin: '系统管理员',
+          manager: '考核办管理员'
         };
         return roleMap[role as keyof typeof roleMap] || role;
       }
@@ -109,32 +118,21 @@ const Personnel: React.FC = () => {
       key: 'created_at',
       render: (date) => new Date(date).toLocaleDateString()
     },
-    {
+    canManage ? {
       title: '操作',
       key: 'action',
       render: (_, record) => (
         <Space size="middle">
-          <Button
-            type="link"
-            icon={<EditOutlined />}
-            onClick={() => handleEditUser(record)}
-          >
-            编辑
-          </Button>
-          <Button
-            type="link"
-            danger
-            icon={<DeleteOutlined />}
-            onClick={() => handleDeleteUser(record.id)}
-          >
-            删除
-          </Button>
+          <Button type="link" icon={<EditOutlined />} onClick={() => handleEditUser(record)}>编辑</Button>
+          <Button type="link" danger icon={<DeleteOutlined />} onClick={() => handleDeleteUser(record.id)}>删除</Button>
+          <Button type="link" onClick={() => provisionAuthAccount(record)}>开通账号</Button>
         </Space>
       ),
-    },
+    } : undefined as any,
   ];
+  const userColumns = baseUserColumns.filter(Boolean) as ColumnsType<User>;
 
-  const deptColumns: ColumnsType<DepartmentWithCount> = [
+  const baseDeptColumns: ColumnsType<DepartmentWithCount> = [
     {
       title: '部门名称',
       dataIndex: 'name',
@@ -151,30 +149,18 @@ const Personnel: React.FC = () => {
       key: 'userCount',
       render: (count) => `${count || 0}人`
     },
-    {
+    canManage ? {
       title: '操作',
       key: 'action',
       render: (_, record) => (
         <Space size="middle">
-          <Button 
-            type="link" 
-            icon={<EditOutlined />}
-            onClick={() => handleEditDepartment(record)}
-          >
-            编辑
-          </Button>
-          <Button 
-            type="link" 
-            danger 
-            icon={<DeleteOutlined />}
-            onClick={() => handleDeleteDepartment(record.id)}
-          >
-            删除
-          </Button>
+          <Button type="link" icon={<EditOutlined />} onClick={() => handleEditDepartment(record)}>编辑</Button>
+          <Button type="link" danger icon={<DeleteOutlined />} onClick={() => handleDeleteDepartment(record.id)}>删除</Button>
         </Space>
       ),
-    },
+    } : undefined as any,
   ];
+  const deptColumns = baseDeptColumns.filter(Boolean) as ColumnsType<DepartmentWithCount>;
 
   const handleAddUser = () => {
     setEditingUser(null);
@@ -210,7 +196,7 @@ const Personnel: React.FC = () => {
     try {
       const userData = {
         name: values.name,
-        email: values.email || null,
+        email: (values.email || '').trim(),
         position: values.position || null,
         department_id: values.departmentId,
         role: values.role
@@ -320,9 +306,9 @@ const Personnel: React.FC = () => {
       children: (
         <div>
           <div className="mb-4">
-            <Button type="primary" icon={<PlusOutlined />} onClick={handleAddUser}>
-              添加用户
-            </Button>
+            {canManage && (
+              <Button type="primary" icon={<PlusOutlined />} onClick={handleAddUser}>添加用户</Button>
+            )}
           </div>
           <Spin spinning={loading}>
             <Table
@@ -341,13 +327,15 @@ const Personnel: React.FC = () => {
       children: (
         <div>
           <div className="mb-4">
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => {
-              setEditingDept(null);
-              deptForm.resetFields();
-              setDeptModalVisible(true);
-            }}>
-              添加部门
-            </Button>
+            {canManage && (
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => {
+                setEditingDept(null);
+                deptForm.resetFields();
+                setDeptModalVisible(true);
+              }}>
+                添加部门
+              </Button>
+            )}
           </div>
           <Spin spinning={loading}>
             <Table
@@ -364,11 +352,14 @@ const Personnel: React.FC = () => {
 
   return (
     <div className="p-6">
-      <Card title="人员管理" extra={<UserOutlined />}>
-        <Tabs items={tabItems} />
-      </Card>
+      <PermissionWrapper permission="write">
+        <Card title="人员管理" extra={<UserOutlined />}>
+          <Tabs items={tabItems} />
+        </Card>
+      </PermissionWrapper>
 
       {/* 用户编辑模态框 */}
+      {canManage && (
       <Modal
         title={editingUser ? '编辑用户' : '添加用户'}
         open={modalVisible}
@@ -393,6 +384,7 @@ const Personnel: React.FC = () => {
             name="email"
             label="邮箱"
             rules={[
+              { required: true, whitespace: true, message: '请输入邮箱' },
               { type: 'email', message: '请输入有效的邮箱地址' }
             ]}
           >
@@ -442,8 +434,10 @@ const Personnel: React.FC = () => {
           </Form.Item>
         </Form>
       </Modal>
+      )}
 
       {/* 部门编辑模态框 */}
+      {canManage && (
       <Modal
         title={editingDept ? '编辑部门' : '添加部门'}
         open={deptModalVisible}
@@ -482,8 +476,39 @@ const Personnel: React.FC = () => {
           </Form.Item>
         </Form>
       </Modal>
+      )}
     </div>
   );
 };
 
 export default Personnel;
+  const provisionAuthAccount = async (record: User) => {
+    if (!record.email) {
+      message.error('该用户未配置邮箱，无法开通账号');
+      return;
+    }
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: record.email,
+        password: '123456',
+        options: {
+          data: {
+            name: record.name,
+            role: record.role
+          }
+        }
+      });
+      if (error) {
+        const msg = (error as any).message || '';
+        if (/already registered/i.test(msg)) {
+          message.success('账号已存在，无需重复开通');
+        } else {
+          message.error('开通账号失败：' + msg);
+        }
+        return;
+      }
+      message.success('账号已开通，默认密码为 123456');
+    } catch (e: any) {
+      message.error('开通账号失败：' + (e.message || '未知错误'));
+    }
+  };

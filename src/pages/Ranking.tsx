@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Card,
   Typography,
@@ -23,6 +23,8 @@ import {
   FallOutlined
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
+import { supabase } from '../lib/supabase';
+import dayjs from 'dayjs';
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -57,18 +59,142 @@ const Ranking: React.FC = () => {
   const [searchText, setSearchText] = useState('');
   const [selectedDepartment, setSelectedDepartment] = useState<string>('');
   const [pageSize, setPageSize] = useState(10);
+  const [data, setData] = useState<RankingData[]>([]);
+  const currentYear = String(new Date().getFullYear());
 
   // 生成模拟数据
   const mockData = useMemo(() => generateMockData(), []);
 
+  useEffect(() => {
+    const fetchRanking = async () => {
+      setLoading(true);
+      try {
+        // 1) 获取最终绩效分
+        let { data: fps, error: fpsErr } = await supabase
+          .from('final_performance_scores')
+          .select('*')
+          .eq('period', currentYear);
+        if (fpsErr) fps = [];
+
+        // 若无最终分表数据，回退按测评记录计算
+        let finalByUser = new Map<string, number>();
+        if (fps && fps.length > 0) {
+          for (const r of fps as any[]) {
+            finalByUser.set(r.user_id, Number(r.final_score) || 0);
+          }
+        } else {
+          const { data: evals } = await supabase
+            .from('performance_evaluations')
+            .select('evaluated_user_id, evaluation_type, total_score, status, period')
+            .eq('period', currentYear)
+            .in('status', ['approved','submitted']);
+          const buckets = new Map<string, { sum: number; count: number }>();
+          (evals || []).forEach(e => {
+            const uid = (e as any).evaluated_user_id;
+            if (!uid) return;
+            const b = buckets.get(uid) || { sum: 0, count: 0 };
+            b.sum += Number((e as any).total_score) || 0;
+            b.count += 1;
+            buckets.set(uid, b);
+          });
+          buckets.forEach((b, uid) => finalByUser.set(uid, Number((b.sum / Math.max(1, b.count)).toFixed(2))));
+        }
+
+        // 2) 获取奖励积分（加分）
+        const { data: rewards } = await supabase
+          .from('reward_score_records')
+          .select('user_id, score');
+        const bonusByUser = new Map<string, number>();
+        (rewards || []).forEach(r => {
+          const v = bonusByUser.get((r as any).user_id) || 0;
+          bonusByUser.set((r as any).user_id, v + (Number((r as any).score) || 0));
+        });
+
+        // 3) 基本职责：按年聚合各月扣分，基础满分=20*参与月份数
+        const { data: dutyScores } = await supabase
+          .from('scores')
+          .select('user_id, score, score_type_id, period');
+        const dutyTypes = [/考勤|attendance/i, /学习|培训|learning|training/i, /纪律|违纪|discipline|violation/i];
+        const basicDutyByUser = new Map<string, { deduction: number; months: Set<string> }>();
+        (dutyScores || []).forEach(s => {
+          const uid = (s as any).user_id;
+          const type = String((s as any).score_type_id || '');
+          const period = String((s as any).period || '');
+          if (!uid || !period.startsWith(currentYear + '-')) return;
+          if (!dutyTypes.some(rx => rx.test(type))) return;
+          const bucket = basicDutyByUser.get(uid) || { deduction: 0, months: new Set<string>() };
+          const val = Number((s as any).score) || 0;
+          if (val < 0) bucket.deduction += Math.abs(val);
+          bucket.months.add(period);
+          basicDutyByUser.set(uid, bucket);
+        });
+
+        // 4) 关联用户与部门
+        const userIds = Array.from(new Set([...finalByUser.keys(), ...bonusByUser.keys(), ...basicDutyByUser.keys()]));
+        const { data: usersData } = await supabase
+          .from('users')
+          .select('id, name, department:departments(name), avatar')
+          .in('id', userIds);
+        const usersMap = new Map((usersData || []).map((u: any) => [u.id, u]));
+
+        // 若仍有缺失姓名的用户，尝试通过测评表反查姓名
+        const missingIds = userIds.filter(uid => {
+          const u = usersMap.get(uid);
+          return !u || !u.name;
+        });
+        if (missingIds.length > 0) {
+          const { data: evalUsers } = await supabase
+            .from('performance_evaluations')
+            .select('evaluated_user:users!performance_evaluations_evaluated_user_id_fkey(id,name,department:departments!users_department_id_fkey(name))')
+            .in('evaluated_user_id', missingIds)
+            .limit(1000);
+          (evalUsers || []).forEach((row: any) => {
+            const eu = row?.evaluated_user;
+            if (eu?.id && !usersMap.has(eu.id)) {
+              usersMap.set(eu.id, { id: eu.id, name: eu.name, department: eu.department });
+            }
+          });
+        }
+
+        // 5) 组装数据
+        const rows: RankingData[] = userIds.map(uid => {
+          const u = usersMap.get(uid) || {};
+          const perf = finalByUser.get(uid) || 0;
+          const bonus = bonusByUser.get(uid) || 0;
+          const bd = basicDutyByUser.get(uid) || { deduction: 0, months: new Set<string>() };
+          const baseFull = 20 * (bd.months.size || 1);
+          const basic = Math.max(0, Number((baseFull - bd.deduction).toFixed(1)));
+          const total = Number((perf + bonus).toFixed(1));
+          return {
+            id: uid,
+            name: u.name || '用户',
+            department: Array.isArray(u.department) ? (u.department?.[0]?.name || '-') : (u.department?.name || u.department || '-'),
+            avatar: u.avatar,
+            totalScore: Number((total + basic).toFixed(1)),
+            basicScore: basic,
+            performanceScore: perf,
+            keyWorkScore: 0,
+            bonusScore: bonus,
+            rank: 0,
+          };
+        }).sort((a, b) => b.totalScore - a.totalScore);
+        rows.forEach((r, i) => r.rank = i + 1);
+        setData(rows);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchRanking();
+  }, [currentYear]);
+
   // 筛选和搜索逻辑
   const filteredData = useMemo(() => {
-    return mockData.filter(item => {
+    return data.filter(item => {
       const matchesSearch = item.name.toLowerCase().includes(searchText.toLowerCase());
       const matchesDepartment = !selectedDepartment || item.department === selectedDepartment;
       return matchesSearch && matchesDepartment;
     });
-  }, [mockData, searchText, selectedDepartment]);
+  }, [data, searchText, selectedDepartment]);
 
   // 统计信息计算
   const statistics: Statistics = useMemo(() => {
@@ -147,7 +273,7 @@ const Ranking: React.FC = () => {
       render: (department: string) => (
         <Tag color="blue">{department}</Tag>
       ),
-      filters: Array.from(new Set(mockData.map(item => item.department))).map(dept => ({
+      filters: Array.from(new Set(data.map(item => item.department))).map(dept => ({
         text: dept,
         value: dept,
       })),

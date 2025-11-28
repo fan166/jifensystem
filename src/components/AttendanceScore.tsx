@@ -3,6 +3,7 @@ import { Card, Table, Button, Modal, Form, Input, Select, InputNumber, message, 
 import { PlusOutlined, EditOutlined, DeleteOutlined, InfoCircleOutlined, ArrowUpOutlined, ArrowDownOutlined, UserOutlined, CalendarOutlined, FilterOutlined, BarChartOutlined, TableOutlined, DownloadOutlined, ReloadOutlined, EyeOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { scoreAPI, scoreTypeAPI, userAPI } from '../services/api';
+import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../stores/authStore';
 import type { Score, ScoreType, User } from '../lib/supabase';
 import dayjs from 'dayjs';
@@ -58,6 +59,7 @@ const AttendanceScore: React.FC<AttendanceScoreProps> = ({ readonly = false, cur
   const [selectedUser, setSelectedUser] = useState<string | undefined>(undefined);
   const { user: currentUser } = useAuthStore();
   const [selectedScoreTypeId, setSelectedScoreTypeId] = useState<string | undefined>(undefined);
+  const [selectedStandardType, setSelectedStandardType] = useState<string | undefined>(undefined);
 
   // 统计数据
   const [statistics, setStatistics] = useState({
@@ -253,6 +255,7 @@ const AttendanceScore: React.FC<AttendanceScoreProps> = ({ readonly = false, cur
       score: Math.abs(record.score), // 显示正数，用户输入时更直观
       reason: record.reason
     });
+    setSelectedStandardType(record.reason);
     setModalVisible(true);
   };
 
@@ -275,12 +278,38 @@ const AttendanceScore: React.FC<AttendanceScoreProps> = ({ readonly = false, cur
 
   const handleSubmit = async (values: any) => {
     try {
+      let recorderId: string | null = currentUser?.id || null;
+      if (recorderId) {
+        const { data: found, error: findErr } = await supabase
+          .from('users')
+          .select('id')
+          .eq('id', recorderId)
+          .single();
+        if (findErr || !found) {
+          const payload: any = {
+            id: recorderId,
+            email: currentUser?.email || `generated_${Date.now()}_${Math.random().toString(36).slice(2)}@local.local`,
+            name: currentUser?.name || '记录人',
+            role: 'employee'
+          };
+          const { data: created, error: createErr } = await supabase
+            .from('users')
+            .insert([payload])
+            .select('id')
+            .single();
+          if (createErr || !created) {
+            recorderId = null;
+          } else {
+            recorderId = created.id;
+          }
+        }
+      }
       const scoreData = {
         user_id: values.userId,
         score_type_id: values.scoreTypeId,
         score: -Math.abs(values.score), // 考勤扣分，存储为负数
-        reason: values.reason,
-        recorder_id: currentUser?.id,
+        reason: selectedStandardType || '',
+        recorder_id: recorderId,
         period: dayjs().format('YYYY-MM')
       };
 
@@ -301,9 +330,9 @@ const AttendanceScore: React.FC<AttendanceScoreProps> = ({ readonly = false, cur
   };
 
   const handleQuickAdd = (standard: typeof ATTENDANCE_STANDARDS[0]) => {
+    setSelectedStandardType(standard.type);
     form.setFieldsValue({
-      score: Math.abs(standard.score),
-      reason: `${standard.type}：${standard.description}`
+      score: Math.abs(standard.score)
     });
   };
 
@@ -401,40 +430,24 @@ const AttendanceScore: React.FC<AttendanceScoreProps> = ({ readonly = false, cur
         size="small"
         style={{ marginBottom: 16 }}
       >
-        <Row gutter={[16, 16]}>
+        <Row gutter={[16, 16]} style={{ alignItems: 'stretch' }}>
           {ATTENDANCE_STANDARDS.map((standard, index) => {
             const categoryData = categoryStats[standard.type];
             const hasData = categoryData && categoryData.count > 0;
             
             return (
-              <Col span={8} key={index}>
+              <Col xs={24} sm={12} md={8} key={index} style={{ display: 'flex' }}>
                 <Card 
                   size="small" 
                   hoverable
-                  style={{ 
-                    border: hasData ? '1px solid #ff7875' : '1px solid #d9d9d9',
-                    backgroundColor: hasData ? '#fff2f0' : '#fafafa'
-                  }}
+                  className="floating-card"
+                  style={{ border: '1px solid #d9d9d9', backgroundColor: '#fafafa', borderRadius: 8, boxShadow: '0 1px 6px rgba(0,0,0,0.06)', height: '100%', display: 'flex', flexDirection: 'column' }}
                 >
                   <div style={{ marginBottom: 8 }}>
                     <Space>
-                      <Tag color={hasData ? "red" : "default"}>
+                      <Tag color="default">
                         {standard.type}
                       </Tag>
-                      {hasData && (
-                        <Badge 
-                          count={categoryData.count} 
-                          style={{ backgroundColor: '#ff4d4f' }}
-                        />
-                      )}
-                      {hasData && categoryData.trend !== 'stable' && (
-                         <Tooltip title={`相比上月${categoryData.trend === 'up' ? '增加' : '减少'}`}>
-                           {categoryData.trend === 'up' ? 
-                             <ArrowUpOutlined style={{ color: '#ff4d4f' }} /> : 
-                             <ArrowDownOutlined style={{ color: '#52c41a' }} />
-                           }
-                         </Tooltip>
-                       )}
                     </Space>
                   </div>
                   
@@ -443,19 +456,6 @@ const AttendanceScore: React.FC<AttendanceScoreProps> = ({ readonly = false, cur
                       <div style={{ fontSize: '12px', color: '#666' }}>
                         标准扣分: <strong>{Math.abs(standard.score)}分/次</strong>
                       </div>
-                      {hasData && (
-                        <>
-                          <div style={{ fontSize: '12px', color: '#ff4d4f' }}>
-                            实际扣分: <strong>{categoryData.totalScore.toFixed(1)}分</strong>
-                          </div>
-                          <Progress 
-                            percent={Math.min((categoryData.count / 10) * 100, 100)} 
-                            size="small" 
-                            status={categoryData.count > 5 ? 'exception' : 'normal'}
-                            showInfo={false}
-                          />
-                        </>
-                      )}
                     </Space>
                   </div>
                   
@@ -463,56 +463,18 @@ const AttendanceScore: React.FC<AttendanceScoreProps> = ({ readonly = false, cur
                     {standard.description}
                   </div>
                   
-                  {hasData && (
-                    <div style={{ marginTop: 8, textAlign: 'center' }}>
-                      <Button 
-                        type="link" 
-                        size="small" 
-                        onClick={() => setFilterType(standard.type)}
-                        style={{ padding: 0, fontSize: '11px' }}
-                      >
-                        查看详情 ({categoryData.count}条)
-                      </Button>
-                    </div>
-                  )}
+                  
                 </Card>
               </Col>
             );
           })}
         </Row>
+        <style>{`
+          .floating-card { transition: transform 0.2s ease, box-shadow 0.2s ease; }
+          .floating-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,0,0,0.12); }
+        `}</style>
         
-        {/* 趋势时间线 */}
-        {Object.keys(categoryStats).length > 0 && (
-          <div style={{ marginTop: 16 }}>
-            <h4 style={{ marginBottom: 12 }}>
-              <CalendarOutlined /> 最近扣分记录时间线
-            </h4>
-            <Timeline mode="left" style={{ maxHeight: 200, overflowY: 'auto' }}>
-              {filteredRecords.slice(0, 10).map((record, index) => {
-                const isHighScore = Math.abs(record.score) >= 3;
-                return (
-                  <Timeline.Item 
-                    key={record.id}
-                    color={isHighScore ? 'red' : 'orange'}
-                    dot={isHighScore ? <Avatar size="small" style={{ backgroundColor: '#ff4d4f' }}>{Math.abs(record.score)}</Avatar> : undefined}
-                  >
-                    <div style={{ fontSize: '12px' }}>
-                      <div style={{ fontWeight: 'bold', color: isHighScore ? '#ff4d4f' : '#fa8c16' }}>
-                        {record.user?.name} - 扣{Math.abs(record.score)}分
-                      </div>
-                      <div style={{ color: '#666', marginTop: 2 }}>
-                        {record.reason}
-                      </div>
-                      <div style={{ color: '#999', fontSize: '11px', marginTop: 2 }}>
-                        {dayjs(record.created_at).format('MM-DD HH:mm')}
-                      </div>
-                    </div>
-                  </Timeline.Item>
-                );
-              })}
-            </Timeline>
-          </div>
-        )}
+        
       </Card>
 
       {/* 数据表格 */}
@@ -590,34 +552,15 @@ const AttendanceScore: React.FC<AttendanceScoreProps> = ({ readonly = false, cur
                 ),
               },
               {
-                title: '扣分类型',
+                title: '扣分原因',
                 dataIndex: 'reason',
                 key: 'type',
                 width: 120,
-                render: (reason) => {
-                  const standard = ATTENDANCE_STANDARDS.find(s => 
-                    reason?.includes(s.type) || reason?.includes(s.description)
-                  );
-                  return (
-                    <Tag color={standard ? 'red' : 'orange'}>
-                      {standard?.type || '其他'}
-                    </Tag>
-                  );
-                },
-              },
-              {
-                title: '扣分原因',
-                dataIndex: 'reason',
-                key: 'reason',
-                ellipsis: {
-                  showTitle: false,
-                },
                 render: (reason) => (
-                  <Tooltip placement="topLeft" title={reason}>
-                    <span style={{ fontSize: '12px' }}>{reason}</span>
-                  </Tooltip>
+                  <span style={{ fontSize: '12px' }}>{reason || '其他'}</span>
                 ),
               },
+              
               {
                 title: '扣分值',
                 dataIndex: 'score',
@@ -755,19 +698,10 @@ const AttendanceScore: React.FC<AttendanceScoreProps> = ({ readonly = false, cur
             {/* 已移除考勤日期字段 */}
           </Row>
 
-          <Form.Item
-            name="reason"
-            label="扣分原因"
-            rules={[{ required: true, message: '请输入扣分原因' }]}
-          >
-            <TextArea
-              placeholder="请输入扣分原因"
-              rows={3}
-            />
-          </Form.Item>
+          
 
           {/* 快速选择扣分标准（随所选积分类型联动） */}
-          <Form.Item label="快速选择">
+          <Form.Item>
             <div>
               {(() => {
                 const t = allScoreTypes.find(x => x.id === selectedScoreTypeId);

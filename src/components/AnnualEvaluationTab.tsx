@@ -63,7 +63,7 @@ interface AnnualEvaluation {
 }
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  'pending': { label: '待审核', color: 'bg-yellow-100 text-yellow-800' },
+  'submitted': { label: '待审核', color: 'bg-yellow-100 text-yellow-800' },
   'approved': { label: '已审核', color: 'bg-green-100 text-green-800' },
   'rejected': { label: '已驳回', color: 'bg-red-100 text-red-800' }
 };
@@ -111,12 +111,12 @@ export const AnnualEvaluationTab: React.FC = () => {
   const [batches, setBatches] = useState<EvaluationBatch[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [selectedPeriod, setSelectedPeriod] = useState('2024');
+  const [selectedPeriod, setSelectedPeriod] = useState(String(new Date().getFullYear()));
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [editingEvaluation, setEditingEvaluation] = useState<AnnualEvaluation | null>(null);
   const { user } = useAuth();
   const { hasPermission } = useDynamicPermissionCheck('view_annual_evaluation');
-  const { userRole, isAdmin, isLeader } = useRoleCheck();
+  const { userRole, isAdmin, isLeader, canApprove } = useRoleCheck();
   const { annualVisible } = useEvaluationVisibility();
   const [permissions, setPermissions] = useState({
     canView: false,
@@ -147,7 +147,25 @@ export const AnnualEvaluationTab: React.FC = () => {
     if (permissions.canView) {
       fetchEvaluations();
     }
-  }, [permissions.canView, selectedPeriod]);
+  }, [permissions.canView, selectedPeriod, user?.id]);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('annual-evaluations')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'performance_evaluations' }, (payload) => {
+        const row: any = (payload as any).new || (payload as any).old;
+        if (!row) return;
+        if (row.evaluation_type !== 'annual') return;
+        const p = String(row.period || '');
+        if (p.startsWith(selectedPeriod)) {
+          fetchEvaluations();
+        }
+      })
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [selectedPeriod, permissions.canView]);
 
   // 当可见性或角色发生变化时，实时更新权限
   useEffect(() => {
@@ -164,7 +182,7 @@ export const AnnualEvaluationTab: React.FC = () => {
       canView,
       canCreate,
       canEdit,
-      canApprove: isAdmin || isLeader
+      canApprove
     });
   };
 
@@ -221,27 +239,49 @@ export const AnnualEvaluationTab: React.FC = () => {
   const fetchEvaluations = async () => {
     setLoading(true);
     try {
+      if (!permissions.canApprove && !user?.id) {
+        setEvaluations([]);
+        setLoading(false);
+        return;
+      }
       let query = supabase
         .from('performance_evaluations')
         .select(`
           *,
-          evaluated_user:evaluated_user_id(id, name, department, role),
-          evaluator:evaluator_id(id, name, department, role),
-          batch:batch_id(id, batch_name, evaluation_type, status)
+          evaluated_user:users!performance_evaluations_evaluated_user_id_fkey(id, name, role, department:departments!users_department_id_fkey(name)),
+          evaluator:users!performance_evaluations_evaluator_id_fkey(id, name, role, department:departments!users_department_id_fkey(name))
         `)
         .eq('evaluation_type', 'annual')
-        .eq('period', selectedPeriod)
+        .or(`period.eq.${selectedPeriod},period.like.${selectedPeriod}-%`)
         .order('created_at', { ascending: false });
 
       // 根据权限过滤数据
-      if (!permissions.canApprove) {
-        query = query.or(`evaluator_id.eq.${user?.id},evaluated_user_id.eq.${user?.id}`);
+      if (!permissions.canApprove && user?.id) {
+        query = query.or(`evaluator_id.eq.${user.id},evaluated_user_id.eq.${user.id}`);
       }
 
       const { data, error } = await query;
 
       if (error) throw error;
-      setEvaluations(data || []);
+
+      const base = (data || []) as any[];
+      const batchIds = Array.from(new Set(base.map(e => e.batch_id).filter(Boolean)));
+      if (batchIds.length > 0) {
+        const { data: batchesData, error: batchesError } = await supabase
+          .from('evaluation_batches')
+          .select('id, batch_name, evaluation_type, status')
+          .in('id', batchIds);
+        if (batchesError) {
+          console.error('获取批次信息失败:', batchesError);
+          setEvaluations(base);
+        } else {
+          const batchMap = new Map((batchesData || []).map((b: any) => [b.id, b]));
+          const enriched = base.map(e => ({ ...e, batch: e.batch_id ? batchMap.get(e.batch_id) || null : null }));
+          setEvaluations(enriched);
+        }
+      } else {
+        setEvaluations(base);
+      }
     } catch (error) {
       console.error('获取年终测评失败:', error);
       toast.error('获取年终测评失败');
@@ -273,6 +313,18 @@ export const AnnualEvaluationTab: React.FC = () => {
 
     setSubmitting(true);
     try {
+      const uid = user.id;
+      const { data: exists } = await supabase.from('users').select('id').eq('id', uid).limit(1);
+      if (!exists || exists.length === 0) {
+        const { data: au } = await supabase.auth.getUser();
+        const email = au?.user?.email || '';
+        const name = au?.user?.user_metadata?.name || email.split('@')[0] || '用户';
+        const role = au?.user?.user_metadata?.role || 'employee';
+        const ins = await supabase.from('users').insert([{ id: uid, email, name, role }]);
+        if ((ins as any).error) throw (ins as any).error;
+      }
+      const now = new Date();
+      const periodStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
       const evaluationData = {
         evaluated_user_id: formData.evaluated_user_id,
         evaluator_id: user.id,
@@ -284,8 +336,8 @@ export const AnnualEvaluationTab: React.FC = () => {
         total_score: totalScore,
         comments: formData.comments,
         evaluation_date: new Date().toISOString().split('T')[0],
-        period: selectedPeriod,
-        status: 'pending',
+        period: periodStr,
+        status: 'submitted',
         is_anonymous: formData.is_anonymous,
         evaluation_round: 1,
         weight_factor: 1.0
@@ -454,6 +506,18 @@ export const AnnualEvaluationTab: React.FC = () => {
 
     setSubmitting(true);
     try {
+      const uid = user.id;
+      const { data: exists } = await supabase.from('users').select('id').eq('id', uid).limit(1);
+      if (!exists || exists.length === 0) {
+        const { data: au } = await supabase.auth.getUser();
+        const email = au?.user?.email || '';
+        const name = au?.user?.user_metadata?.name || email.split('@')[0] || '用户';
+        const role = au?.user?.user_metadata?.role || 'employee';
+        const ins = await supabase.from('users').insert([{ id: uid, email, name, role }]);
+        if ((ins as any).error) throw (ins as any).error;
+      }
+      const now = new Date();
+      const periodStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
       const evaluations = selectedUsers.map(userId => {
         const scores = batchScores[userId];
         if (!scores) return null;
@@ -469,8 +533,8 @@ export const AnnualEvaluationTab: React.FC = () => {
           total_score: scores.work_volume_score + scores.work_quality_score,
           comments: scores.comments,
           evaluation_date: new Date().toISOString().split('T')[0],
-          period: selectedPeriod,
-          status: 'pending',
+          period: periodStr,
+          status: 'submitted',
           is_anonymous: formData.is_anonymous,
           evaluation_round: 1,
           weight_factor: 1.0
@@ -899,12 +963,9 @@ export const AnnualEvaluationTab: React.FC = () => {
                 <TableHeader>
                   <TableRow>
                     <TableHead>被测评人</TableHead>
-                    <TableHead>职务</TableHead>
                     <TableHead>测评人</TableHead>
                     <TableHead>评分详情</TableHead>
                     <TableHead>总分</TableHead>
-                    <TableHead>轮次</TableHead>
-                    <TableHead>批次</TableHead>
                     <TableHead>测评日期</TableHead>
                     <TableHead>状态</TableHead>
                     <TableHead>操作</TableHead>
@@ -918,11 +979,10 @@ export const AnnualEvaluationTab: React.FC = () => {
                           <User className="h-4 w-4" />
                           <div>
                             <div className="font-medium">{evaluation.evaluated_user.name}</div>
-                            <div className="text-sm text-gray-500">{evaluation.evaluated_user.department}</div>
+                            <div className="text-sm text-gray-500">{Array.isArray(evaluation.evaluated_user?.department) ? (evaluation.evaluated_user?.department?.[0]?.name || '未设置部门') : (evaluation.evaluated_user?.department?.name || evaluation.evaluated_user?.department || '未设置部门')}</div>
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell>{evaluation.evaluated_user.role}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
                           <Users className="h-4 w-4" />
@@ -933,25 +993,12 @@ export const AnnualEvaluationTab: React.FC = () => {
                         <div className="text-sm">
                           <div>任务量: {evaluation.work_volume_score}分</div>
                           <div>质量: {evaluation.work_quality_score}分</div>
-                          <div>重点: {evaluation.key_work_score}分</div>
                         </div>
                       </TableCell>
                       <TableCell>
                         <span className={`font-medium ${getScoreColor(evaluation.total_score)}`}>
                           {evaluation.total_score}分
                         </span>
-                      </TableCell>
-                      <TableCell>
-                        <Badge className={getRoundBadgeColor(evaluation.evaluation_round)}>
-                          第{evaluation.evaluation_round}轮
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {evaluation.batch ? (
-                          <Badge variant="outline">{evaluation.batch.batch_name}</Badge>
-                        ) : (
-                          <span className="text-gray-400">无批次</span>
-                        )}
                       </TableCell>
                       <TableCell>{new Date(evaluation.evaluation_date).toLocaleDateString()}</TableCell>
                       <TableCell>
@@ -961,7 +1008,7 @@ export const AnnualEvaluationTab: React.FC = () => {
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
-                          {permissions.canEdit && evaluation.evaluator_id === user?.id && evaluation.status === 'pending' && (
+                          {permissions.canEdit && evaluation.evaluator_id === user?.id && evaluation.status === 'submitted' && (
                             <Button
                               variant="ghost"
                               size="sm"
@@ -970,7 +1017,7 @@ export const AnnualEvaluationTab: React.FC = () => {
                               <Edit className="h-4 w-4" />
                             </Button>
                           )}
-                          {permissions.canEdit && evaluation.evaluator_id === user?.id && evaluation.status === 'pending' && (
+                          {permissions.canEdit && evaluation.evaluator_id === user?.id && evaluation.status === 'submitted' && (
                             <Button
                               variant="ghost"
                               size="sm"
@@ -979,7 +1026,7 @@ export const AnnualEvaluationTab: React.FC = () => {
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           )}
-                          {permissions.canApprove && evaluation.status === 'pending' && (
+                          {permissions.canApprove && evaluation.status === 'submitted' && (
                             <>
                               <Button
                                 variant="ghost"

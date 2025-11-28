@@ -24,9 +24,27 @@ export const userAPI = {
       .insert([user])
       .select()
       .single();
-    
-    if (error) throw error;
-    return data;
+
+    if (error) {
+      const needsRoleFallback = error.code === '23514' || /users_role_check/i.test(error.message || '');
+      if (needsRoleFallback) {
+        const roleMap: Record<string, string> = {
+          system_admin: 'admin',
+          assessment_admin: 'manager'
+        };
+        const mappedRole = roleMap[(user as any).role] || (user as any).role;
+        const fallbackUser = { ...user, role: mappedRole } as any;
+        const { data: data2, error: error2 } = await supabase
+          .from('users')
+          .insert([fallbackUser])
+          .select()
+          .single();
+        if (error2) throw error2;
+        return data2 as any;
+      }
+      throw error;
+    }
+    return data as any;
   },
 
   // 更新用户
@@ -37,9 +55,27 @@ export const userAPI = {
       .eq('id', id)
       .select()
       .single();
-    
-    if (error) throw error;
-    return data;
+
+    if (error) {
+      const needsRoleFallback = error.code === '23514' || /users_role_check/i.test(error.message || '');
+      if (needsRoleFallback && (user as any)?.role) {
+        const roleMap: Record<string, string> = {
+          system_admin: 'admin',
+          assessment_admin: 'manager'
+        };
+        const mappedRole = roleMap[(user as any).role] || (user as any).role;
+        const { data: data2, error: error2 } = await supabase
+          .from('users')
+          .update({ ...user, role: mappedRole, updated_at: new Date().toISOString() })
+          .eq('id', id)
+          .select()
+          .single();
+        if (error2) throw error2;
+        return data2 as any;
+      }
+      throw error;
+    }
+    return data as any;
   },
 
   // 删除用户

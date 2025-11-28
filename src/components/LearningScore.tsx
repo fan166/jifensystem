@@ -121,7 +121,7 @@ const LearningScore: React.FC<LearningScoreProps> = ({ readonly = false }) => {
     const totalBonus = bonusRecords.reduce((sum, record) => sum + record.score, 0);
     const netScore = totalBonus - totalDeduction;
     const uniqueUsers = new Set(records.map(r => r.user_id)).size;
-    const avgScore = records.reduce((sum, record) => sum + record.score, 0) / records.length;
+    const avgScore = deductionRecords.length ? (totalDeduction / deductionRecords.length) : 0;
 
     setStatistics({
       totalRecords: records.length,
@@ -141,19 +141,7 @@ const LearningScore: React.FC<LearningScoreProps> = ({ readonly = false }) => {
       width: 100,
       fixed: 'left'
     },
-    {
-      title: '部门',
-      dataIndex: ['user', 'department', 'name'],
-      key: 'department',
-      width: 120
-    },
-    {
-      title: '学习类型',
-      dataIndex: 'score_type_id',
-      key: 'scoreType',
-      width: 120,
-      render: (typeId) => <Tag color="blue">{typeId}</Tag>
-    },
+    
     {
       title: '积分',
       dataIndex: 'score',
@@ -262,14 +250,19 @@ const LearningScore: React.FC<LearningScoreProps> = ({ readonly = false }) => {
 
   const handleSubmit = async (values: any) => {
     try {
-      const scoreValue = values.scoreType === 'bonus' ? values.score : -Math.abs(values.score);
+      const scoreValue = scoreType === 'bonus' ? values.score : -Math.abs(values.score);
+      const typeId = values.scoreTypeId ?? (scoreTypes && scoreTypes.length > 0 ? scoreTypes[0].id : undefined);
+      if (!typeId) {
+        message.error('缺少学习类型');
+        return;
+      }
       const scoreData = {
         user_id: values.userId,
-        score_type_id: values.scoreTypeId,
+        score_type_id: typeId,
         score: scoreValue,
         reason: values.reason,
         recorder_id: currentUser?.id,
-        period: values.learningDate ? values.learningDate.format('YYYY-MM') : dayjs().format('YYYY-MM')
+        period: dayjs().format('YYYY-MM')
       };
 
       if (editingRecord) {
@@ -312,26 +305,16 @@ const LearningScore: React.FC<LearningScoreProps> = ({ readonly = false }) => {
           </Card>
         </Col>
         {/* 已移除：总加分统计卡片 */}
-        <Col span={4}>
-          <Card>
-            <Statistic 
-              title="净得分" 
-              value={statistics.netScore} 
-              precision={1} 
-              suffix="分" 
-              valueStyle={{ color: statistics.netScore >= 0 ? '#3f8600' : '#cf1322' }}
-            />
-          </Card>
-        </Col>
+        
         {/* 已移除：涉及人数统计卡片 */}
         <Col span={4}>
           <Card>
             <Statistic 
-              title="平均得分" 
+              title="平均扣分" 
               value={statistics.avgScore} 
               precision={1} 
               suffix="分"
-              valueStyle={{ color: statistics.avgScore >= 0 ? '#3f8600' : '#cf1322' }}
+              valueStyle={{ color: '#cf1322' }}
             />
           </Card>
         </Col>
@@ -468,34 +451,11 @@ const LearningScore: React.FC<LearningScoreProps> = ({ readonly = false }) => {
                 </Select>
               </Form.Item>
             </Col>
-            <Col span={12}>
-              <Form.Item
-                name="scoreTypeId"
-                label="学习类型"
-                rules={[{ required: true, message: '请选择学习类型' }]}
-              >
-                <Select placeholder="请选择学习类型">
-                  {scoreTypes.map(type => (
-                    <Option key={type.id} value={type.id}>{type.name}</Option>
-                  ))}
-                </Select>
-              </Form.Item>
-            </Col>
+            
           </Row>
 
           <Row gutter={16}>
-            <Col span={8}>
-              <Form.Item
-                name="scoreType"
-                label="积分类型"
-                rules={[{ required: true, message: '请选择积分类型' }]}
-              >
-                <Select value={scoreType} onChange={setScoreType}>
-                  <Option value="deduction">扣分</Option>
-                  <Option value="bonus">加分</Option>
-                </Select>
-              </Form.Item>
-            </Col>
+            
             <Col span={8}>
               <Form.Item
                 name="score"
@@ -513,15 +473,7 @@ const LearningScore: React.FC<LearningScoreProps> = ({ readonly = false }) => {
                 />
               </Form.Item>
             </Col>
-            <Col span={8}>
-              <Form.Item
-                name="learningDate"
-                label="学习日期"
-                rules={[{ required: true, message: '请选择学习日期' }]}
-              >
-                <DatePicker className="w-full" />
-              </Form.Item>
-            </Col>
+            
           </Row>
 
           <Form.Item
@@ -535,42 +487,7 @@ const LearningScore: React.FC<LearningScoreProps> = ({ readonly = false }) => {
             />
           </Form.Item>
 
-          {/* 快速选择标准 */}
-          <Form.Item label="快速选择">
-            <div className="mb-2">
-              <span className="text-sm font-medium text-red-600">扣分标准：</span>
-              <div className="grid grid-cols-3 gap-2 mt-1">
-                {LEARNING_STANDARDS.map((standard, index) => (
-                  <Button
-                    key={index}
-                    size="small"
-                    onClick={() => handleQuickAdd(standard)}
-                    className="text-left"
-                    danger
-                  >
-                    {standard.type} ({Math.abs(standard.score)}分)
-                  </Button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <span className="text-sm font-medium text-green-600">加分标准：</span>
-              <div className="grid grid-cols-2 gap-2 mt-1">
-                {LEARNING_BONUS.map((standard, index) => (
-                  <Button
-                    key={index}
-                    size="small"
-                    onClick={() => handleQuickAdd(standard)}
-                    className="text-left"
-                    type="primary"
-                    ghost
-                  >
-                    {standard.type} (+{standard.score}分)
-                  </Button>
-                ))}
-              </div>
-            </div>
-          </Form.Item>
+          
 
           <Form.Item className="mb-0">
             <Space className="w-full justify-end">

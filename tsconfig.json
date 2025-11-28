@@ -32,5 +32,10 @@
   "include": [
     "src",
     "api"
+  ],
+  "exclude": [
+    "src/**/*-副本*.ts",
+    "src/**/*-副本*.tsx",
+    "src/**/App-副本*.tsx"
   ]
 }

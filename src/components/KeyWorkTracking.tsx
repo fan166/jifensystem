@@ -75,6 +75,25 @@ const KeyWorkTracking: React.FC<KeyWorkTrackingProps> = ({
   const { user } = useAuthStore();
   const [milestones, setMilestones] = useState<KeyWorkMilestone[]>([]);
   const [progressReports, setProgressReports] = useState<KeyWorkProgress[]>([]);
+  const [milestoneTableMissing, setMilestoneTableMissing] = useState(false);
+  const [progressTableMissing, setProgressTableMissing] = useState(false);
+
+  const localProgressKey = (kwid: string) => `kw_progress_${kwid}`;
+  const loadLocalProgress = (kwid: string): KeyWorkProgress[] => {
+    try {
+      const raw = localStorage.getItem(localProgressKey(kwid));
+      if (!raw) return [];
+      const arr = JSON.parse(raw) || [];
+      return Array.isArray(arr) ? arr : [];
+    } catch {
+      return [];
+    }
+  };
+  const saveLocalProgress = (kwid: string, items: KeyWorkProgress[]) => {
+    try {
+      localStorage.setItem(localProgressKey(kwid), JSON.stringify(items));
+    } catch {}
+  };
   const [loading, setLoading] = useState(false);
   const [milestoneModalVisible, setMilestoneModalVisible] = useState(false);
   const [progressModalVisible, setProgressModalVisible] = useState(false);
@@ -99,7 +118,14 @@ const KeyWorkTracking: React.FC<KeyWorkTrackingProps> = ({
         .eq('key_work_id', keyWorkId)
         .order('target_date', { ascending: true });
 
-      if (error) throw error;
+      if (error) {
+        if ((error as any).code === 'PGRST205') {
+          setMilestoneTableMissing(true);
+          setMilestones([]);
+          return;
+        }
+        throw error;
+      }
 
       const formattedData = data?.map(milestone => ({
         ...milestone,
@@ -109,7 +135,7 @@ const KeyWorkTracking: React.FC<KeyWorkTrackingProps> = ({
       setMilestones(formattedData);
     } catch (error) {
       console.error('获取里程碑失败:', error);
-      message.error('获取里程碑失败');
+      if (!milestoneTableMissing) message.error('获取里程碑失败');
     }
   };
 
@@ -125,7 +151,15 @@ const KeyWorkTracking: React.FC<KeyWorkTrackingProps> = ({
         .eq('key_work_id', keyWorkId)
         .order('reported_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        if ((error as any).code === 'PGRST205') {
+          setProgressTableMissing(true);
+          const local = loadLocalProgress(keyWorkId);
+          setProgressReports(local);
+          return;
+        }
+        throw error;
+      }
 
       const formattedData = data?.map(progress => ({
         ...progress,
@@ -135,13 +169,17 @@ const KeyWorkTracking: React.FC<KeyWorkTrackingProps> = ({
       setProgressReports(formattedData);
     } catch (error) {
       console.error('获取进度报告失败:', error);
-      message.error('获取进度报告失败');
+      if (!progressTableMissing) message.error('获取进度报告失败');
     }
   };
 
   // 创建或更新里程碑
   const handleMilestoneSubmit = async (values: any) => {
     try {
+      if (milestoneTableMissing) {
+        message.error('未启用里程碑数据表，无法创建里程碑');
+        return;
+      }
       const milestoneData = {
         key_work_id: keyWorkId,
         milestone_title: values.milestone_title,
@@ -178,6 +216,10 @@ const KeyWorkTracking: React.FC<KeyWorkTrackingProps> = ({
   // 更新里程碑状态
   const handleMilestoneStatusUpdate = async (milestoneId: string, status: string, completionRate: number) => {
     try {
+      if (milestoneTableMissing) {
+        message.error('未启用里程碑数据表，无法更新里程碑');
+        return;
+      }
       const updateData: any = { status, completion_rate: completionRate };
       if (status === 'completed') {
         updateData.actual_date = dayjs().format('YYYY-MM-DD');
@@ -201,6 +243,26 @@ const KeyWorkTracking: React.FC<KeyWorkTrackingProps> = ({
   // 提交进度报告
   const handleProgressSubmit = async (values: any) => {
     try {
+      if (progressTableMissing) {
+        const newItem: KeyWorkProgress = {
+          id: `${keyWorkId}-${Date.now()}`,
+          key_work_id: keyWorkId,
+          progress_description: values.progress_description,
+          completion_percentage: values.completion_percentage,
+          attachments: [],
+          reported_by: user?.id || '',
+          reported_at: dayjs().toISOString(),
+          reporter_name: (user as any)?.name || '我'
+        } as any;
+        const current = loadLocalProgress(keyWorkId);
+        const updated = [newItem, ...current].sort((a, b) => dayjs(b.reported_at).valueOf() - dayjs(a.reported_at).valueOf());
+        saveLocalProgress(keyWorkId, updated);
+        setProgressReports(updated);
+        message.success('进度报告提交成功');
+        setProgressModalVisible(false);
+        progressForm.resetFields();
+        return;
+      }
       const progressData = {
         key_work_id: keyWorkId,
         progress_description: values.progress_description,
@@ -241,295 +303,14 @@ const KeyWorkTracking: React.FC<KeyWorkTrackingProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* 总体进度统计 */}
-      <Card title="总体进度">
-        <Row gutter={16}>
-          <Col span={8}>
-            <Statistic
-              title="总体完成率"
-              value={calculateOverallProgress()}
-              suffix="%"
-              valueStyle={{ color: '#1890ff' }}
-            />
-          </Col>
-          <Col span={8}>
-            <Statistic
-              title="里程碑总数"
-              value={milestones.length}
-              prefix={<CalendarOutlined />}
-            />
-          </Col>
-          <Col span={8}>
-            <Statistic
-              title="已完成里程碑"
-              value={milestones.filter(m => m.status === 'completed').length}
-              prefix={<CheckCircleOutlined />}
-              valueStyle={{ color: '#52c41a' }}
-            />
-          </Col>
-        </Row>
-        <div className="mt-4">
-          <Progress percent={calculateOverallProgress()} strokeColor="#1890ff" />
-        </div>
-      </Card>
+      
 
-      {/* 里程碑管理 */}
-      <Card
-        title="里程碑管理"
-        extra={
-          canEdit && (
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => {
-                setEditingMilestone(null);
-                milestoneForm.resetFields();
-                setMilestoneModalVisible(true);
-              }}
-            >
-              添加里程碑
-            </Button>
-          )
-        }
-      >
-        {milestones.length > 0 ? (
-          <Timeline>
-            {milestones.map(milestone => {
-              const status = statusMap[milestone.status as keyof typeof statusMap];
-              const isOverdue = milestone.status !== 'completed' && 
-                dayjs().isAfter(dayjs(milestone.target_date));
-              
-              return (
-                <Timeline.Item
-                  key={milestone.id}
-                  dot={
-                    milestone.status === 'completed' ? (
-                      <CheckCircleOutlined className="text-green-500" />
-                    ) : isOverdue ? (
-                      <ExclamationCircleOutlined className="text-red-500" />
-                    ) : (
-                      <ClockCircleOutlined className="text-blue-500" />
-                    )
-                  }
-                >
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1">
-                      <h4 className="font-medium text-lg">{milestone.milestone_title}</h4>
-                      {milestone.milestone_description && (
-                        <p className="text-gray-600 mt-1">{milestone.milestone_description}</p>
-                      )}
-                      <div className="flex items-center space-x-4 mt-2">
-                        <Tag color={status.color}>{status.text}</Tag>
-                        <span className="text-sm text-gray-500">
-                          目标日期: {dayjs(milestone.target_date).format('YYYY-MM-DD')}
-                        </span>
-                        {milestone.actual_date && (
-                          <span className="text-sm text-gray-500">
-                            完成日期: {dayjs(milestone.actual_date).format('YYYY-MM-DD')}
-                          </span>
-                        )}
-                        <span className="text-sm text-gray-500">
-                          创建人: {milestone.creator_name}
-                        </span>
-                      </div>
-                      <div className="mt-2">
-                        <Progress 
-                          percent={milestone.completion_rate} 
-                          size="small"
-                          status={milestone.status === 'completed' ? 'success' : 'active'}
-                        />
-                      </div>
-                    </div>
-                    {canEdit && milestone.status !== 'completed' && (
-                      <Space>
-                        <Button
-                          size="small"
-                          onClick={() => handleMilestoneStatusUpdate(milestone.id, 'completed', 100)}
-                        >
-                          标记完成
-                        </Button>
-                        <Button
-                          size="small"
-                          onClick={() => {
-                            setEditingMilestone(milestone);
-                            milestoneForm.setFieldsValue({
-                              ...milestone,
-                              target_date: dayjs(milestone.target_date)
-                            });
-                            setMilestoneModalVisible(true);
-                          }}
-                        >
-                          编辑
-                        </Button>
-                      </Space>
-                    )}
-                  </div>
-                </Timeline.Item>
-              );
-            })}
-          </Timeline>
-        ) : (
-          <div className="text-center text-gray-500 py-8">
-            暂无里程碑，请添加里程碑来跟踪工作进度
-          </div>
-        )}
-      </Card>
 
-      {/* 进度报告 */}
-      <Card
-        title="进度报告"
-        extra={
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => {
-              progressForm.resetFields();
-              setProgressModalVisible(true);
-            }}
-          >
-            提交进度
-          </Button>
-        }
-      >
-        {progressReports.length > 0 ? (
-          <List
-            itemLayout="vertical"
-            dataSource={progressReports}
-            renderItem={report => (
-              <List.Item>
-                <List.Item.Meta
-                  avatar={<Avatar icon={<UserOutlined />} />}
-                  title={
-                    <div className="flex justify-between items-center">
-                      <span>{report.reporter_name}</span>
-                      <div className="flex items-center space-x-2">
-                        <Progress 
-                          type="circle" 
-                          size={40} 
-                          percent={report.completion_percentage}
-                        />
-                        <span className="text-sm text-gray-500">
-                          {dayjs(report.reported_at).format('YYYY-MM-DD HH:mm')}
-                        </span>
-                      </div>
-                    </div>
-                  }
-                  description={report.progress_description}
-                />
-              </List.Item>
-            )}
-          />
-        ) : (
-          <div className="text-center text-gray-500 py-8">
-            暂无进度报告
-          </div>
-        )}
-      </Card>
+      
 
-      {/* 里程碑模态框 */}
-      <Modal
-        title={editingMilestone ? '编辑里程碑' : '添加里程碑'}
-        open={milestoneModalVisible}
-        onCancel={() => {
-          setMilestoneModalVisible(false);
-          setEditingMilestone(null);
-          milestoneForm.resetFields();
-        }}
-        footer={null}
-      >
-        <Form
-          form={milestoneForm}
-          layout="vertical"
-          onFinish={handleMilestoneSubmit}
-        >
-          <Form.Item
-            name="milestone_title"
-            label="里程碑标题"
-            rules={[{ required: true, message: '请输入里程碑标题' }]}
-          >
-            <Input placeholder="请输入里程碑标题" />
-          </Form.Item>
 
-          <Form.Item
-            name="milestone_description"
-            label="里程碑描述"
-          >
-            <TextArea rows={3} placeholder="请输入里程碑描述" />
-          </Form.Item>
 
-          <Form.Item
-            name="target_date"
-            label="目标完成日期"
-            rules={[{ required: true, message: '请选择目标完成日期' }]}
-          >
-            <DatePicker className="w-full" />
-          </Form.Item>
-
-          <div className="flex justify-end space-x-2">
-            <Button onClick={() => {
-              setMilestoneModalVisible(false);
-              setEditingMilestone(null);
-              milestoneForm.resetFields();
-            }}>
-              取消
-            </Button>
-            <Button type="primary" htmlType="submit">
-              {editingMilestone ? '更新' : '创建'}
-            </Button>
-          </div>
-        </Form>
-      </Modal>
-
-      {/* 进度报告模态框 */}
-      <Modal
-        title="提交进度报告"
-        open={progressModalVisible}
-        onCancel={() => {
-          setProgressModalVisible(false);
-          progressForm.resetFields();
-        }}
-        footer={null}
-      >
-        <Form
-          form={progressForm}
-          layout="vertical"
-          onFinish={handleProgressSubmit}
-        >
-          <Form.Item
-            name="completion_percentage"
-            label="完成百分比"
-            rules={[{ required: true, message: '请输入完成百分比' }]}
-          >
-            <InputNumber
-              min={0}
-              max={100}
-              step={5}
-              formatter={value => `${value}%`}
-              className="w-full"
-            />
-          </Form.Item>
-
-          <Form.Item
-            name="progress_description"
-            label="进度描述"
-            rules={[{ required: true, message: '请输入进度描述' }]}
-          >
-            <TextArea rows={4} placeholder="请详细描述当前工作进度、已完成的任务和遇到的问题" />
-          </Form.Item>
-
-          <div className="flex justify-end space-x-2">
-            <Button onClick={() => {
-              setProgressModalVisible(false);
-              progressForm.resetFields();
-            }}>
-              取消
-            </Button>
-            <Button type="primary" htmlType="submit">
-              提交报告
-            </Button>
-          </div>
-        </Form>
-      </Modal>
+      
     </div>
   );
 };
