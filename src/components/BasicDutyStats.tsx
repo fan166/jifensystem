@@ -476,76 +476,32 @@ const BasicDutyStats: React.FC<BasicDutyStatsProps> = ({ currentUserId }) => {
   const departments = Array.from(new Set(users.map(u => u.department_id).filter(Boolean)));
 
   return (
-    <div>
+    <div style={{ maxWidth: 1200, margin: '0 auto', padding: 16 }}>
       {/* 总体统计卡片 */}
-      <Row gutter={16} className="mb-4">
-        <Col span={6}>
-          <Card>
-            <Statistic title="扣分记录数" value={overallStats.totalRecords} prefix={<BarChartOutlined />} />
+      <Row gutter={24} className="mb-4">
+        <Col xs={24} sm={12} md={6}>
+          <Card bordered={false}>
+            <Statistic title="扣分记录数" value={overallStats.totalRecords} />
           </Card>
         </Col>
-        <Col span={6}>
-          <Card>
-            <Statistic title="考勤管理扣分" value={overallStats.attendanceTotal} precision={1} suffix="分" valueStyle={{ color: overallStats.attendanceTotal >= 0 ? '#3f8600' : '#cf1322' }} />
+        <Col xs={24} sm={12} md={6}>
+          <Card bordered={false}>
+            <Statistic title="考勤管理扣分" value={overallStats.attendanceTotal} precision={1} suffix="分" valueStyle={{ color: '#1f1f1f' }} />
           </Card>
         </Col>
-        <Col span={6}>
-          <Card>
-            <Statistic title="基础学习扣分" value={overallStats.learningTotal} precision={1} suffix="分" valueStyle={{ color: overallStats.learningTotal >= 0 ? '#3f8600' : '#cf1322' }} />
+        <Col xs={24} sm={12} md={6}>
+          <Card bordered={false}>
+            <Statistic title="基础学习扣分" value={overallStats.learningTotal} precision={1} suffix="分" valueStyle={{ color: '#1f1f1f' }} />
           </Card>
         </Col>
-        <Col span={6}>
-          <Card>
-            <Statistic title="工作纪律扣分" value={overallStats.disciplineTotal} precision={1} suffix="分" valueStyle={{ color: overallStats.disciplineTotal >= 0 ? '#3f8600' : '#cf1322' }} />
+        <Col xs={24} sm={12} md={6}>
+          <Card bordered={false}>
+            <Statistic title="工作纪律扣分" value={overallStats.disciplineTotal} precision={1} suffix="分" valueStyle={{ color: '#1f1f1f' }} />
           </Card>
         </Col>
       </Row>
 
-      {/* 准备图表数据 */}
-      {(() => {
-        const chartData = [
-          { name: '基本职责积分', value: overallStats.totalRecords, color: '#1890ff' },
-          { name: '考勤管理分', value: overallStats.attendanceTotal, color: '#52c41a' },
-          { name: '基础学习分', value: overallStats.learningTotal, color: '#faad14' },
-          { name: '工作纪律分', value: overallStats.disciplineTotal, color: '#f5222d' }
-        ];
-
-        // 生成智能建议
-        const generateSuggestions = () => {
-          const suggestions = [];
-          const totalScore = overallStats.attendanceTotal + overallStats.learningTotal + overallStats.disciplineTotal;
-          
-          if (totalScore > 0) {
-            suggestions.push({ type: 'positive', text: '整体积分表现良好，继续保持！' });
-          }
-          
-          if (overallStats.attendanceTotal > overallStats.learningTotal && overallStats.attendanceTotal > overallStats.disciplineTotal) {
-            suggestions.push({ type: 'positive', text: '考勤表现突出，值得表扬！' });
-          }
-          
-          if (overallStats.learningTotal < 0) {
-            suggestions.push({ type: 'warning', text: '学习积分需要加强，建议多参与相关活动。' });
-          }
-          
-          if (overallStats.disciplineTotal < 0) {
-            suggestions.push({ type: 'warning', text: '纪律表现有待提升，请注意相关要求。' });
-          }
-          
-          if (overallStats.totalRecords < 5) {
-            suggestions.push({ type: 'info', text: '记录数量较少，建议增加参与度。' });
-          }
-          
-          return suggestions.length > 0 ? suggestions : [{ type: 'info', text: '暂无足够数据进行分析，请继续积累。' }];
-        };
-
-        const suggestions = generateSuggestions();
-
-        return (
-          <>
-
-          </>
-        );
-      })()}
+      
 
      
 

@@ -25,7 +25,7 @@ import {
   Descriptions
 } from 'antd';
 import KeyWorkTracking from '../components/KeyWorkTracking';
-import TaskCompletionConfirmation from '../components/TaskCompletionConfirmation';
+import SimpleCompletionConfirm from '../components/SimpleCompletionConfirm';
 
 import {
   PlusOutlined,
@@ -155,6 +155,13 @@ const KeyWorkManagement: React.FC = () => {
     supporter: '支持者',
     coordinator: '协调者'
   };
+  const roleWeights: Record<string, number> = {
+    leader: 1.0,
+    main_participant: 0.8,
+    participant: 0.6,
+    supporter: 0.5,
+    coordinator: 0.5
+  };
 
   useEffect(() => {
     fetchKeyWorks();
@@ -162,6 +169,107 @@ const KeyWorkManagement: React.FC = () => {
     fetchDepartments();
     fetchStatistics();
   }, [activeTab]);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('key_works_changes')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'key_works' }, (payload: any) => {
+        const updated = payload?.new;
+        if (!updated?.id) return;
+        setKeyWorks(prev => prev.map(w => (
+          w.id === updated.id
+            ? {
+                ...w,
+                status: updated.status ?? w.status,
+                completion_rate: typeof updated.completion_rate === 'number' ? updated.completion_rate : w.completion_rate,
+                actual_completion_date: updated.actual_completion_date ?? w.actual_completion_date
+              }
+            : w
+        )));
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'key_works' }, () => {
+        fetchKeyWorks();
+        fetchStatistics();
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'key_works' }, (payload: any) => {
+        const removed = payload?.old;
+        if (!removed?.id) return;
+        setKeyWorks(prev => prev.filter(w => w.id !== removed.id));
+        fetchStatistics();
+      })
+      .subscribe();
+
+    return () => {
+      try { supabase.removeChannel(channel); } catch {}
+    };
+  }, []);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('key_work_participants_changes')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'key_work_participants' }, (payload: any) => {
+        const updated = payload?.new;
+        if (!updated?.id || !updated?.key_work_id) return;
+        setKeyWorks(prev => prev.map(w => {
+          if (w.id !== updated.key_work_id) return w;
+          const participants = (w.participants || []).map(p => (
+            p.id === updated.id
+              ? {
+                  ...p,
+                  role: updated.role ?? p.role,
+                  individual_score: typeof updated.individual_score === 'number' ? updated.individual_score : p.individual_score,
+                  contribution_description: updated.contribution_description ?? p.contribution_description
+                }
+              : p
+          ));
+          return { ...w, participants };
+        }));
+
+        setSelectedWork(prev => {
+          if (!prev || prev.id !== updated.key_work_id) return prev;
+          const participants = (prev.participants || []).map(p => (
+            p.id === updated.id
+              ? {
+                  ...p,
+                  role: updated.role ?? p.role,
+                  individual_score: typeof updated.individual_score === 'number' ? updated.individual_score : p.individual_score,
+                  contribution_description: updated.contribution_description ?? p.contribution_description
+                }
+              : p
+          ));
+          return { ...prev, participants } as any;
+        });
+      })
+      .subscribe();
+
+    return () => {
+      try { supabase.removeChannel(channel); } catch {}
+    };
+  }, []);
+
+  useEffect(() => {
+    const ch = supabase
+      .channel('scores_key_work_updates')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'scores' }, (payload: any) => {
+        const row = payload?.new;
+        if (!row?.user_id || !row?.score || !row?.reason) return;
+        // 仅处理当前选中工作相关的重点工作积分（通过理由包含工作标题判断）
+        setSelectedWork(prev => {
+          if (!prev || !prev.work_title) return prev;
+          const reason: string = row.reason || '';
+          if (!reason.includes(prev.work_title)) return prev;
+          const participants = (prev.participants || []).map(p => (
+            p.user_id === row.user_id ? { ...p, individual_score: Number(row.score) || p.individual_score } : p
+          ));
+          return { ...prev, participants } as any;
+        });
+      })
+      .subscribe();
+
+    return () => {
+      try { supabase.removeChannel(ch); } catch {}
+    };
+  }, []);
 
   // 获取重点工作列表
   const fetchKeyWorks = async () => {
@@ -423,21 +531,33 @@ const KeyWorkManagement: React.FC = () => {
       // 处理参与人员
       if (values.participants && values.participants.length > 0) {
         const workId = editingWork?.id || result.data[0].id;
-        
+
         if (editingWork) {
-          // 删除原有参与人员
           const { error: deleteError } = await supabase
             .from('key_work_participants')
             .delete()
             .eq('key_work_id', workId);
-          
+
           if (deleteError) {
             console.error('删除原有参与人员失败:', deleteError);
           }
         }
 
-        // 验证参与人员的用户ID是否存在
-        for (const participant of values.participants) {
+        let participantsInput = [...values.participants];
+
+        if (!editingWork) {
+          const hasLeader = participantsInput.some((p: any) => p.role === 'leader');
+          if (!hasLeader) {
+            const creatorIndex = participantsInput.findIndex((p: any) => p.user_id === user?.id);
+            if (creatorIndex >= 0) {
+              participantsInput[creatorIndex] = { ...participantsInput[creatorIndex], role: 'leader' };
+            } else {
+              participantsInput.unshift({ user_id: user?.id, role: 'leader' });
+            }
+          }
+        }
+
+        for (const participant of participantsInput) {
           if (participant.user_id) {
             console.log('验证参与人员用户ID:', participant.user_id);
             const { data: participantUserExists, error: participantUserCheckError } = await supabase
@@ -460,13 +580,12 @@ const KeyWorkManagement: React.FC = () => {
           }
         }
 
-        // 添加新的参与人员
-        const participantData = values.participants.map((p: any) => ({
+        const participantData = participantsInput.map((p: any) => ({
           key_work_id: workId,
           user_id: p.user_id,
-          role: p.role || 'participant', // 设置默认角色
-          contribution_description: p.contribution_description || null,
-          individual_score: 0,
+          role: p.role || 'participant',
+          contribution_description: null,
+          individual_score: typeof p.individual_score === 'number' ? p.individual_score : 0,
           assigned_date: dayjs().format('YYYY-MM-DD'),
           is_active: true
         }));
@@ -479,7 +598,6 @@ const KeyWorkManagement: React.FC = () => {
 
         if (participantError) {
           console.error('添加参与人员失败:', participantError);
-          // 参与人员添加失败不影响主要工作的创建
           message.warning('重点工作创建成功，但添加参与人员时出现问题');
         }
       }
@@ -582,6 +700,19 @@ const KeyWorkManagement: React.FC = () => {
   // 提交评价
   const handleEvaluationSubmit = async (values: any) => {
     try {
+      const baseTotal = (values.innovation_score || 0) + (values.execution_score || 0) + (values.collaboration_score || 0) + (values.result_score || 0);
+      const role = selectedWork?.participants?.find(p => p.id === values.participant_id)?.role || 'participant';
+      const roleWeights: Record<string, number> = {
+        leader: 1.0,
+        main_participant: 0.8,
+        participant: 0.6,
+        supporter: 0.5,
+        coordinator: 0.5
+      };
+      const weight = roleWeights[role] ?? 0.6;
+      const maxWorkScore = typeof selectedWork?.total_score === 'number' ? selectedWork.total_score : baseTotal;
+      const finalScore = Math.min(maxWorkScore, Number((baseTotal * weight).toFixed(2)));
+
       const evaluationData = {
         key_work_id: selectedWork?.id,
         participant_id: values.participant_id,
@@ -590,8 +721,7 @@ const KeyWorkManagement: React.FC = () => {
         execution_score: values.execution_score,
         collaboration_score: values.collaboration_score,
         result_score: values.result_score,
-        total_score: values.innovation_score + values.execution_score + 
-                    values.collaboration_score + values.result_score,
+        total_score: finalScore,
         evaluation_comments: values.evaluation_comments
       };
 
@@ -677,7 +807,7 @@ const KeyWorkManagement: React.FC = () => {
       key: 'completion_rate',
       width: 120,
       render: (rate: number) => (
-        <Progress percent={rate} size="small" />
+        <Progress percent={typeof rate === 'number' ? rate : 0} size="small" />
       ),
     },
     {
@@ -790,22 +920,10 @@ const KeyWorkManagement: React.FC = () => {
             </>
           )}
           
-          {hasPermission('write') && record.status === 'completed' && (
-            <Tooltip title="评价">
-              <Button
-                type="text"
-                icon={<TrophyOutlined />}
-                className="text-orange-600"
-                onClick={() => {
-                  setSelectedWork(record);
-                  setEvaluationModalVisible(true);
-                }}
-              />
-            </Tooltip>
-          )}
+          
 
-          {!hasPermission('write') && (record.participants || []).some(p => p.user_id === user?.id) && (
-            <Tooltip title="填报重点工作报告">
+          {!hasPermission('write') && (record.participants || []).some(p => p.user_id === user?.id && ['leader','main_participant'].includes(p.role)) && (
+            <Tooltip title="填写完成情况报告">
               <Button
                 type="text"
                 icon={<FileTextOutlined />}
@@ -870,7 +988,7 @@ const KeyWorkManagement: React.FC = () => {
       </Row>
 
       <Modal
-        title="填报重点工作报告"
+        title="完成情况报告"
         open={employeeReportModalVisible}
         onCancel={() => setEmployeeReportModalVisible(false)}
         onOk={async () => {
@@ -904,9 +1022,8 @@ const KeyWorkManagement: React.FC = () => {
             const { error: updateErr } = await supabase
               .from('key_work_participants')
               .update({
-                completion_status: 'completed',
                 completion_date: actualDate,
-                completion_report: reportText
+                contribution_description: reportText
               })
               .eq('id', participant.id);
 
@@ -967,9 +1084,7 @@ const KeyWorkManagement: React.FC = () => {
                 form.resetFields();
                 setModalVisible(true);
               }}
-            >
-              新建重点工作
-            </Button>
+            >新建重点工作</Button>
           )}
         </div>
 
@@ -1079,14 +1194,14 @@ const KeyWorkManagement: React.FC = () => {
             <Col span={8}>
               <Form.Item
                 name="total_score"
-                label="拟奖励重点分"
-                rules={[{ required: true, message: '请输入拟奖励重点分' }]}
+                label="拟奖励重点积分"
+                rules={[{ required: true, message: '请输入拟奖励重点积分' }]}
               >
                 <InputNumber
                   min={0}
                   max={20}
                   step={0.5}
-                  placeholder="拟奖励重点分"
+                  placeholder="拟奖励重点积分"
                   className="w-full"
                 />
               </Form.Item>
@@ -1163,11 +1278,30 @@ const KeyWorkManagement: React.FC = () => {
                       </Form.Item>
                     </Col>
                     <Col span={8}>
-                      <Form.Item
-                        {...restField}
-                        name={[name, 'contribution_description']}
-                      >
-                        <Input placeholder="贡献描述" />
+                      <Form.Item noStyle shouldUpdate={(prev, curr) => prev.total_score !== curr.total_score || prev.participants !== curr.participants}>
+                        {() => {
+                          const total = Number(form.getFieldValue('total_score')) || 0;
+                          const currentRole = form.getFieldValue(['participants', name, 'role']);
+                          const weight = roleWeights[currentRole as keyof typeof roleWeights] ?? 0.6;
+                          const maxSelectable = Math.max(0, Number((total * weight).toFixed(1)));
+                          const options: number[] = [];
+                          for (let v = 0; v <= maxSelectable; v = Number((v + 0.5).toFixed(1))) {
+                            options.push(Number(v.toFixed(1)));
+                          }
+                          return (
+                            <Form.Item
+                              {...restField}
+                              name={[name, 'individual_score']}
+                              rules={[{ required: true, message: '请选择个人拟奖励积分' }]}
+                            >
+                              <Select placeholder="选择个人拟奖励积分">
+                                {options.map(val => (
+                                  <Option key={val} value={val}>{val}分</Option>
+                                ))}
+                              </Select>
+                            </Form.Item>
+                          );
+                        }}
                       </Form.Item>
                     </Col>
                     <Col span={2}>
@@ -1224,7 +1358,7 @@ const KeyWorkManagement: React.FC = () => {
                   {statusMap[selectedWork.status as keyof typeof statusMap]}
                 </Tag>
               </Descriptions.Item>
-              <Descriptions.Item label="拟奖励重点分">{selectedWork.total_score}</Descriptions.Item>
+              <Descriptions.Item label="拟奖励重点积分">{selectedWork.total_score}</Descriptions.Item>
               <Descriptions.Item label="完成进度">
                 <Progress percent={selectedWork.completion_rate} />
               </Descriptions.Item>
@@ -1353,8 +1487,7 @@ const KeyWorkManagement: React.FC = () => {
         </Form>
       </Modal>
 
-      {/* 任务完成确认模态框 */}
-      <TaskCompletionConfirmation
+      <SimpleCompletionConfirm
         visible={completionModalVisible}
         onCancel={() => {
           setCompletionModalVisible(false);

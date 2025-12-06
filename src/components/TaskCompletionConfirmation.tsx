@@ -125,9 +125,8 @@ const TaskCompletionConfirmation: React.FC<TaskCompletionConfirmationProps> = ({
         const { error: participantsError } = await supabase
           .from('key_work_participants')
           .update({
-            completion_status: 'completed',
             completion_date: completionData.actual_completion_date,
-            completion_report: reportText
+            contribution_description: reportText
           })
           .in('id', selectedParticipants);
         if (participantsError) throw participantsError;
@@ -486,18 +485,7 @@ const TaskCompletionConfirmation: React.FC<TaskCompletionConfirmationProps> = ({
       width={800}
       destroyOnHidden
     >
-      <div className="mb-6">
-        <Progress
-          percent={(currentStep + 1) * 33.33}
-          steps={3}
-          size="small"
-        />
-        <div className="flex justify-between mt-2 text-sm text-gray-600">
-          <span>提交完成报告</span>
-          <span>评价参与人员</span>
-          <span>完成闭环</span>
-        </div>
-      </div>
+      
 
       {steps[currentStep].content}
     </Modal>

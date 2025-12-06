@@ -3,6 +3,7 @@ import { Card, Row, Col, Typography, List, Badge, Spin, Progress, Button } from 
 import { TrophyOutlined, UserOutlined, FileTextOutlined, StarOutlined, RocketOutlined, GiftOutlined, BarChartOutlined, TeamOutlined, CalendarOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { scoreAPI } from '../services/api';
+import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../stores/authStore';
 import { useNavigate } from 'react-router-dom';
 
@@ -34,6 +35,24 @@ const Dashboard: React.FC = () => {
       loadDashboardData();
     }
   }, [user]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const ch = supabase
+      .channel(`scores_user_${user.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'scores', filter: `user_id=eq.${user.id}` },
+        () => {
+          loadDashboardData();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      try { supabase.removeChannel(ch); } catch {}
+    };
+  }, [user?.id]);
 
   const loadDashboardData = async () => {
     if (!user?.id) return;
