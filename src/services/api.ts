@@ -263,7 +263,8 @@ export const scoreAPI = {
   async getUserScoreStats(userId: string, period?: string) {
     const currentPeriod = period || new Date().toISOString().slice(0, 7);
     
-    const { data, error } = await supabase
+    // 1. 从scores表获取基础积分数据
+    const { data: scoresData, error: scoresError } = await supabase
       .from('scores')
       .select(`
         score,
@@ -272,7 +273,7 @@ export const scoreAPI = {
       .eq('user_id', userId)
       .eq('period', currentPeriod);
 
-    if (error) throw error;
+    if (scoresError) throw scoresError;
 
     const stats = {
       totalScore: 0,
@@ -282,7 +283,8 @@ export const scoreAPI = {
       bonus: 0
     };
 
-    data?.forEach((record: any) => {
+    // 处理scores表中的积分数据
+    scoresData?.forEach((record: any) => {
       const score = record.score || 0;
       stats.totalScore += score;
       
@@ -303,6 +305,31 @@ export const scoreAPI = {
             break;
         }
       }
+    });
+
+    // 2. 从key_work_participants表获取重点工作积分
+    const currentYearMonth = currentPeriod;
+    const monthStart = new Date(`${currentYearMonth}-01`);
+    const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0);
+    
+    const { data: keyWorkData, error: keyWorkError } = await supabase
+      .from('key_work_participants')
+      .select(`
+        individual_score,
+        key_work:key_works(status, end_date)
+      `)
+      .eq('user_id', userId)
+      .eq('key_works.status', 'completed')
+      .gte('key_works.end_date', monthStart.toISOString())
+      .lte('key_works.end_date', monthEnd.toISOString());
+
+    if (keyWorkError) throw keyWorkError;
+
+    // 处理重点工作积分
+    keyWorkData?.forEach((record: any) => {
+      const score = record.individual_score || 0;
+      stats.keyWork += score;
+      stats.totalScore += score;
     });
 
     return stats;

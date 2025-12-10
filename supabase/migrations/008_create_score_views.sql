@@ -27,11 +27,11 @@ SELECT
     ), 0) as performance_score,
     -- 重点工作积分
     COALESCE((
-        SELECT SUM(kwp.participation_score) 
+        SELECT SUM(kwp.individual_score) 
         FROM key_work_participants kwp
         JOIN key_works kw ON kwp.key_work_id = kw.id
         WHERE kwp.user_id = u.id 
-        AND kwp.completion_status = 'completed'
+        AND kw.status = 'completed'
         AND kw.end_date >= DATE_TRUNC('month', CURRENT_DATE)::date
         AND kw.end_date <= (DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month' - INTERVAL '1 day')::date
     ), 0) as key_work_score,
@@ -60,11 +60,11 @@ SELECT
         AND wt.completed_at <= (DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month')::timestamp
     ), 0) + 
     COALESCE((
-        SELECT SUM(kwp.participation_score) 
+        SELECT SUM(kwp.individual_score) 
         FROM key_work_participants kwp
         JOIN key_works kw ON kwp.key_work_id = kw.id
         WHERE kwp.user_id = u.id 
-        AND kwp.completion_status = 'completed'
+        AND kw.status = 'completed'
         AND kw.end_date >= DATE_TRUNC('month', CURRENT_DATE)::date
         AND kw.end_date <= (DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month' - INTERVAL '1 day')::date
     ), 0) + 
@@ -93,11 +93,11 @@ SELECT
             AND wt.completed_at <= (DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month')::timestamp
         ), 0) + 
         COALESCE((
-            SELECT SUM(kwp.participation_score) 
+            SELECT SUM(kwp.individual_score) 
             FROM key_work_participants kwp
             JOIN key_works kw ON kwp.key_work_id = kw.id
             WHERE kwp.user_id = u.id 
-            AND kwp.completion_status = 'completed'
+            AND kw.status = 'completed'
             AND kw.end_date >= DATE_TRUNC('month', CURRENT_DATE)::date
             AND kw.end_date <= (DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month' - INTERVAL '1 day')::date
         ), 0) + 

@@ -37,7 +37,8 @@ import {
   ExclamationCircleOutlined,
   UserOutlined,
   CalendarOutlined,
-  TrophyOutlined
+  TrophyOutlined,
+  FileTextOutlined
 } from '@ant-design/icons';
 import { useAuthStore } from '../stores/authStore';
 import { supabase } from '../lib/supabase';
@@ -1284,21 +1285,24 @@ const KeyWorkManagement: React.FC = () => {
                           const currentRole = form.getFieldValue(['participants', name, 'role']);
                           const weight = roleWeights[currentRole as keyof typeof roleWeights] ?? 0.6;
                           const maxSelectable = Math.max(0, Number((total * weight).toFixed(1)));
-                          const options: number[] = [];
-                          for (let v = 0; v <= maxSelectable; v = Number((v + 0.5).toFixed(1))) {
-                            options.push(Number(v.toFixed(1)));
-                          }
                           return (
                             <Form.Item
                               {...restField}
                               name={[name, 'individual_score']}
-                              rules={[{ required: true, message: '请选择个人拟奖励积分' }]}
+                              rules={[
+                                { required: true, message: '请输入个人拟奖励积分' },
+                                { type: 'number', min: 0, max: maxSelectable, message: `积分必须在0到${maxSelectable}之间` }
+                              ]}
                             >
-                              <Select placeholder="选择个人拟奖励积分">
-                                {options.map(val => (
-                                  <Option key={val} value={val}>{val}分</Option>
-                                ))}
-                              </Select>
+                              <InputNumber
+                                min={0}
+                                max={maxSelectable}
+                                step={0.5}
+                                placeholder="输入个人拟奖励积分"
+                                className="w-full"
+                                formatter={(value) => `${value}分`}
+                                parser={(value) => Number(value?.replace('分', '') || 0)}
+                              />
                             </Form.Item>
                           );
                         }}
