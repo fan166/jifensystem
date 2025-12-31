@@ -77,7 +77,7 @@ export const useAuthStore = create<AuthState>()(persist(
             updated_at: supabaseUser.updated_at || supabaseUser.created_at
           };
 
-          set({ user: mappedUser as any, isAuthenticated: true, isLoading: false });
+          set({ user: mappedUser as User, isAuthenticated: true, isLoading: false });
           return;
         }
 

@@ -59,7 +59,6 @@ const Dashboard: React.FC = () => {
     
     // 网络不可达时直接跳过加载，避免报错干扰UI
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-      console.warn('网络不可用，跳过仪表板数据加载');
       return;
     }
 
@@ -137,7 +136,7 @@ const Dashboard: React.FC = () => {
       setRecentActivities(recentScores);
       
     } catch (error) {
-      console.error('加载仪表板数据失败:', error);
+      // 静默失败，不影响UI
     } finally {
       setLoading(false);
     }

@@ -38,17 +38,12 @@ const Personnel: React.FC = () => {
   }, []);
 
   const loadData = async () => {
-    console.log('开始加载数据...');
     setLoading(true);
     try {
-      console.log('调用API获取用户和部门数据...');
       const [usersData, departmentsData] = await Promise.all([
         userAPI.getUsers(),
         departmentAPI.getDepartments()
       ]);
-      
-      console.log('获取到的用户数据:', usersData);
-      console.log('获取到的部门数据:', departmentsData);
       
       // 计算每个部门的用户数量
       const deptWithCount = departmentsData.map(dept => ({
@@ -56,21 +51,12 @@ const Personnel: React.FC = () => {
         userCount: usersData.filter(user => user.department_id === dept.id).length
       }));
       
-      console.log('处理后的部门数据（包含用户数量）:', deptWithCount);
-      
       setUsers(usersData);
       setDepartments(deptWithCount);
-      console.log('数据设置完成');
-    } catch (error) {
-      console.error('加载数据失败 - 详细错误:', error);
-      console.error('错误堆栈:', error.stack);
-      if (error.message) {
-        console.error('错误消息:', error.message);
-      }
+    } catch (error: any) {
       message.error(`加载数据失败: ${error.message || '未知错误'}`);
     } finally {
       setLoading(false);
-      console.log('数据加载流程结束');
     }
   };
 
@@ -184,7 +170,6 @@ const Personnel: React.FC = () => {
           message.success('删除成功');
           loadData();
         } catch (error) {
-          console.error('删除失败:', error);
           message.error('删除失败');
         }
       }
@@ -192,7 +177,6 @@ const Personnel: React.FC = () => {
   };
 
   const handleSubmitUser = async (values: any) => {
-    console.log('提交用户数据:', values);
     try {
       const userData = {
         name: values.name,
@@ -201,17 +185,12 @@ const Personnel: React.FC = () => {
         department_id: values.departmentId,
         role: values.role
       };
-      console.log('准备发送的用户数据:', userData);
 
       if (editingUser) {
-        console.log('更新用户:', editingUser.id);
-        const result = await userAPI.updateUser(editingUser.id, userData);
-        console.log('更新用户结果:', result);
+        await userAPI.updateUser(editingUser.id, userData);
         message.success('编辑成功');
       } else {
-        console.log('创建新用户');
-        const result = await userAPI.createUser(userData);
-        console.log('创建用户结果:', result);
+        await userAPI.createUser(userData);
         message.success('添加成功');
       }
       
@@ -219,38 +198,25 @@ const Personnel: React.FC = () => {
       form.resetFields();
       setEditingUser(null);
       
-      console.log('开始重新加载数据...');
       await loadData();
-      console.log('数据重新加载完成');
-    } catch (error) {
-      console.error('用户操作失败 - 详细错误信息:', error);
-      console.error('错误堆栈:', error.stack);
-      if (error.message) {
-        console.error('错误消息:', error.message);
-      }
+    } catch (error: any) {
       message.error(`操作失败: ${error.message || '未知错误'}`);
     }
   };
 
   const handleSubmitDepartment = async (values: any) => {
-    console.log('提交部门数据:', values);
     try {
       const deptData = {
         name: values.name,
         description: values.description || '',
         updated_at: new Date().toISOString()
       };
-      console.log('准备发送的部门数据:', deptData);
 
       if (editingDept) {
-        console.log('更新部门:', editingDept.id);
-        const result = await departmentAPI.updateDepartment(editingDept.id, deptData);
-        console.log('更新部门结果:', result);
+        await departmentAPI.updateDepartment(editingDept.id, deptData);
         message.success('编辑成功');
       } else {
-        console.log('创建新部门');
-        const result = await departmentAPI.createDepartment(deptData);
-        console.log('创建部门结果:', result);
+        await departmentAPI.createDepartment(deptData);
         message.success('添加成功');
       }
       
@@ -258,15 +224,8 @@ const Personnel: React.FC = () => {
       deptForm.resetFields();
       setEditingDept(null);
       
-      console.log('开始重新加载数据...');
       await loadData();
-      console.log('数据重新加载完成');
-    } catch (error) {
-      console.error('部门操作失败 - 详细错误信息:', error);
-      console.error('错误堆栈:', error.stack);
-      if (error.message) {
-        console.error('错误消息:', error.message);
-      }
+    } catch (error: any) {
       message.error(`操作失败: ${error.message || '未知错误'}`);
     }
   };
@@ -292,11 +251,71 @@ const Personnel: React.FC = () => {
           message.success('删除成功');
           loadData();
         } catch (error) {
-          console.error('删除失败:', error);
           message.error('删除失败');
         }
       }
     });
+  };
+
+  const provisionAuthAccount = async (record: User) => {
+    if (!record.email) {
+      message.error('该用户未配置邮箱，无法开通账号');
+      return;
+    }
+    try {
+      // 生成随机密码（至少12位，包含大小写字母和数字）
+      const generateRandomPassword = (): string => {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+        let password = '';
+        // 确保至少有一个大写字母、一个小写字母和一个数字
+        password += chars[Math.floor(Math.random() * 26)]; // 大写字母
+        password += chars[26 + Math.floor(Math.random() * 26)]; // 小写字母
+        password += chars[52 + Math.floor(Math.random() * 10)]; // 数字
+        // 填充到至少12位
+        for (let i = password.length; i < 12; i++) {
+          password += chars[Math.floor(Math.random() * chars.length)];
+        }
+        // 打乱字符顺序
+        return password.split('').sort(() => Math.random() - 0.5).join('');
+      };
+
+      const randomPassword = generateRandomPassword();
+      
+      const { data, error } = await supabase.auth.signUp({
+        email: record.email,
+        password: randomPassword,
+        options: {
+          data: {
+            name: record.name,
+            role: record.role
+          },
+          emailRedirectTo: `${window.location.origin}/login`
+        }
+      });
+      
+      if (error) {
+        const msg = (error as any).message || '';
+        if (/already registered/i.test(msg)) {
+          message.success('账号已存在，无需重复开通');
+        } else {
+          message.error('开通账号失败：' + msg);
+        }
+        return;
+      }
+      
+      // 发送密码重置邮件，让用户设置自己的密码
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(record.email, {
+        redirectTo: `${window.location.origin}/reset-password`
+      });
+      
+      if (resetError) {
+        message.warning('账号已开通，但发送密码重置邮件失败。请联系用户手动重置密码。');
+      } else {
+        message.success('账号已开通，密码重置邮件已发送到用户邮箱，请用户查收并设置密码');
+      }
+    } catch (e: any) {
+      message.error('开通账号失败：' + (e.message || '未知错误'));
+    }
   };
 
   const tabItems = [
@@ -482,33 +501,3 @@ const Personnel: React.FC = () => {
 };
 
 export default Personnel;
-  const provisionAuthAccount = async (record: User) => {
-    if (!record.email) {
-      message.error('该用户未配置邮箱，无法开通账号');
-      return;
-    }
-    try {
-      const { data, error } = await supabase.auth.signUp({
-        email: record.email,
-        password: '123456',
-        options: {
-          data: {
-            name: record.name,
-            role: record.role
-          }
-        }
-      });
-      if (error) {
-        const msg = (error as any).message || '';
-        if (/already registered/i.test(msg)) {
-          message.success('账号已存在，无需重复开通');
-        } else {
-          message.error('开通账号失败：' + msg);
-        }
-        return;
-      }
-      message.success('账号已开通，默认密码为 123456');
-    } catch (e: any) {
-      message.error('开通账号失败：' + (e.message || '未知错误'));
-    }
-  };

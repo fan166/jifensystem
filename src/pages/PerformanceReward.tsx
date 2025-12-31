@@ -190,7 +190,6 @@ const PerformanceReward: React.FC = () => {
       
       // 重试机制
       if (retryCount < 2 && error.code !== '42501' && error.code !== 'PGRST116') {
-        console.log(`第 ${retryCount + 1} 次重试...`);
         setTimeout(() => fetchRewardRecords(retryCount + 1), 1000);
       }
     } finally {
@@ -199,7 +198,6 @@ const PerformanceReward: React.FC = () => {
   };
 
   useEffect(() => {
-    console.log('PerformanceReward 组件挂载，开始加载数据...');
     fetchRewardTypes();
     fetchRewardRecords();
     fetchUsers();
@@ -284,8 +282,6 @@ const PerformanceReward: React.FC = () => {
       setImportLoading(true);
       
       // 这里应该处理导入逻辑
-      console.log('处理批量导入...');
-      
       message.success('批量导入功能开发中');
       setImportModalVisible(false);
     } catch (error) {
@@ -586,7 +582,6 @@ const PerformanceReward: React.FC = () => {
           onChange={({ fileList }) => setFileList(fileList)}
           beforeUpload={(file) => {
             // 这里应该处理文件解析
-            console.log('上传文件:', file);
             return false;
           }}
           accept=".xlsx,.xls"

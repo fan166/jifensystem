@@ -102,12 +102,6 @@ const TaskReview: React.FC = () => {
 
       if (error) throw error;
 
-      // 如果需要记录审核意见，可以在这里添加到审核记录表
-      // 目前先用 message 显示
-      if (values.review_comments) {
-        console.log('审核意见:', values.review_comments);
-      }
-
       message.success(`任务${values.action === 'approve' ? '审核通过' : '已拒绝'}`);
       setIsModalVisible(false);
       loadTasks();
