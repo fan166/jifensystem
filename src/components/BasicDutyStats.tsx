@@ -480,22 +480,22 @@ const BasicDutyStats: React.FC<BasicDutyStatsProps> = ({ currentUserId }) => {
       {/* 总体统计卡片 */}
       <Row gutter={24} className="mb-4">
         <Col xs={24} sm={12} md={6}>
-          <Card bordered={false}>
+          <Card variant="borderless">
             <Statistic title="扣分记录数" value={overallStats.totalRecords} />
           </Card>
         </Col>
         <Col xs={24} sm={12} md={6}>
-          <Card bordered={false}>
+          <Card variant="borderless">
             <Statistic title="考勤管理扣分" value={overallStats.attendanceTotal} precision={1} suffix="分" valueStyle={{ color: '#1f1f1f' }} />
           </Card>
         </Col>
         <Col xs={24} sm={12} md={6}>
-          <Card bordered={false}>
+          <Card variant="borderless">
             <Statistic title="基础学习扣分" value={overallStats.learningTotal} precision={1} suffix="分" valueStyle={{ color: '#1f1f1f' }} />
           </Card>
         </Col>
         <Col xs={24} sm={12} md={6}>
-          <Card bordered={false}>
+          <Card variant="borderless">
             <Statistic title="工作纪律扣分" value={overallStats.disciplineTotal} precision={1} suffix="分" valueStyle={{ color: '#1f1f1f' }} />
           </Card>
         </Col>
