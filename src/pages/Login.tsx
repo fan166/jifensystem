@@ -85,7 +85,6 @@ export default function Login() {
       toast.success('登录成功');
       navigate('/');
     } catch (error) {
-      console.error('登录失败:', error);
       const msg = (error as any)?.message || '';
       if (/Invalid login credentials/i.test(msg)) {
         toast.error('账号或密码不正确，请重试');
@@ -113,35 +112,6 @@ export default function Login() {
     }
   };
 
-  // 临时登录功能（开发环境）
-  const handleTempLogin = async () => {
-    setLoading(true);
-    try {
-      // 创建一个临时用户会话
-      const tempUser = {
-        id: 'temp-user-id',
-        email: 'admin@example.com',
-        name: '管理员',
-        role: 'system_admin',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-      
-      // 存储到localStorage作为临时解决方案
-      localStorage.setItem('temp_user', JSON.stringify(tempUser));
-      
-      // 同时设置到Zustand store中
-      setUser(tempUser as any);
-      
-      toast.success('临时登录成功');
-      navigate('/');
-    } catch (error) {
-      console.error('临时登录失败:', error);
-      toast.error('临时登录失败');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">

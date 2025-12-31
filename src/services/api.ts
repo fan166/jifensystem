@@ -263,7 +263,8 @@ export const scoreAPI = {
   async getUserScoreStats(userId: string, period?: string) {
     const currentPeriod = period || new Date().toISOString().slice(0, 7);
     
-    const { data, error } = await supabase
+    // 1. 从scores表获取基础积分数据
+    const { data: scoresData, error: scoresError } = await supabase
       .from('scores')
       .select(`
         score,
@@ -272,7 +273,7 @@ export const scoreAPI = {
       .eq('user_id', userId)
       .eq('period', currentPeriod);
 
-    if (error) throw error;
+    if (scoresError) throw scoresError;
 
     const stats = {
       totalScore: 0,
@@ -282,11 +283,22 @@ export const scoreAPI = {
       bonus: 0
     };
 
-    data?.forEach((record: any) => {
+    // 处理scores表中的积分数据
+    interface ScoreRecordWithType {
+      score?: number;
+      scoreType?: {
+        category?: 'basic_duty' | 'work_performance' | 'key_work' | 'performance_bonus';
+      } | Array<{
+        category?: 'basic_duty' | 'work_performance' | 'key_work' | 'performance_bonus';
+      }>;
+    }
+    
+    (scoresData || []).forEach((record: ScoreRecordWithType) => {
       const score = record.score || 0;
       stats.totalScore += score;
       
-      const category = record.scoreType?.category;
+      const scoreType = Array.isArray(record.scoreType) ? record.scoreType[0] : record.scoreType;
+      const category = scoreType?.category;
       if (category) {
         switch (category) {
           case 'basic_duty':
@@ -305,6 +317,35 @@ export const scoreAPI = {
       }
     });
 
+    // 2. 从key_work_participants表获取重点工作积分
+    const currentYearMonth = currentPeriod;
+    const monthStart = new Date(`${currentYearMonth}-01`);
+    const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0);
+    
+    const { data: keyWorkData, error: keyWorkError } = await supabase
+      .from('key_work_participants')
+      .select(`
+        individual_score,
+        key_work:key_works(status, end_date)
+      `)
+      .eq('user_id', userId)
+      .eq('key_works.status', 'completed')
+      .gte('key_works.end_date', monthStart.toISOString())
+      .lte('key_works.end_date', monthEnd.toISOString());
+
+    if (keyWorkError) throw keyWorkError;
+
+    // 处理重点工作积分
+    interface KeyWorkParticipantRecord {
+      individual_score?: number;
+    }
+    
+    (keyWorkData || []).forEach((record: KeyWorkParticipantRecord) => {
+      const score = record.individual_score || 0;
+      stats.keyWork += score;
+      stats.totalScore += score;
+    });
+
     return stats;
   },
 
@@ -312,7 +353,8 @@ export const scoreAPI = {
   async getScoreRanking(period?: string) {
     const currentPeriod = period || new Date().toISOString().slice(0, 7);
     
-    const { data, error } = await supabase
+    // 1. 从scores表获取基础积分数据
+    const { data: scoresData, error: scoresError } = await supabase
       .from('scores')
       .select(`
         user_id,
@@ -321,11 +363,31 @@ export const scoreAPI = {
       `)
       .eq('period', currentPeriod);
 
-    if (error) throw error;
+    if (scoresError) throw scoresError;
 
-    // 按用户聚合积分
+    // 2. 从key_work_participants表获取重点工作积分
+    const monthStart = new Date(`${currentPeriod}-01`);
+    const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0);
+    
+    const { data: keyWorkData, error: keyWorkError } = await supabase
+      .from('key_work_participants')
+      .select(`
+        user_id,
+        individual_score,
+        key_work:key_works(status, end_date),
+        user:users(id, name, email, department:departments(name))
+      `)
+      .eq('key_works.status', 'completed')
+      .gte('key_works.end_date', monthStart.toISOString())
+      .lte('key_works.end_date', monthEnd.toISOString());
+
+    if (keyWorkError) throw keyWorkError;
+
+    // 3. 按用户聚合积分
     const userScores = new Map();
-    data?.forEach(record => {
+    
+    // 处理基础积分数据
+    scoresData?.forEach(record => {
       const userId = record.user_id;
       const score = record.score || 0;
       
@@ -339,8 +401,24 @@ export const scoreAPI = {
         });
       }
     });
+    
+    // 处理重点工作积分数据
+    keyWorkData?.forEach(record => {
+      const userId = record.user_id;
+      const score = record.individual_score || 0;
+      
+      if (userScores.has(userId)) {
+        userScores.get(userId).totalScore += score;
+      } else {
+        userScores.set(userId, {
+          userId,
+          user: record.user,
+          totalScore: score
+        });
+      }
+    });
 
-    // 转换为数组并排序
+    // 4. 转换为数组并排序
     const ranking = Array.from(userScores.values())
       .sort((a, b) => b.totalScore - a.totalScore);
 

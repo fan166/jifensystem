@@ -18,18 +18,6 @@ const PerformanceEvaluationPage: React.FC = () => {
   const isManager = user?.role === 'assessment_admin';
   const isLeader = user?.role === 'leader';
   const hasAdminAccess = isAdmin || isManager;
-  
-  // 调试信息
-  React.useEffect(() => {
-    console.debug('=== 权限调试信息 ===');
-    console.debug('用户信息:', user);
-    console.debug('用户角色:', user?.role);
-    console.debug('是否已认证:', isAuthenticated);
-    console.debug('是否管理员:', isAdmin);
-    console.debug('是否考核办管理员:', isManager);
-    console.debug('是否有管理员访问权限:', hasAdminAccess);
-    console.debug('==================');
-  }, [user, isAuthenticated, isAdmin, isManager, hasAdminAccess]);
 
   // 生成Tab项
   const generateTabItems = () => {

@@ -37,10 +37,12 @@ import {
   ExclamationCircleOutlined,
   UserOutlined,
   CalendarOutlined,
-  TrophyOutlined
+  TrophyOutlined,
+  FileTextOutlined
 } from '@ant-design/icons';
 import { useAuthStore } from '../stores/authStore';
 import { supabase } from '../lib/supabase';
+import { isValidUUID, generateUUID } from '../lib/utils';
 import dayjs from 'dayjs';
 import type { ColumnsType } from 'antd/es/table';
 
@@ -113,8 +115,19 @@ const KeyWorkManagement: React.FC = () => {
   const [form] = Form.useForm();
   const [evaluationForm] = Form.useForm();
   const [reportForm] = Form.useForm();
-  const [users, setUsers] = useState<any[]>([]);
-  const [departments, setDepartments] = useState<any[]>([]);
+  interface UserListItem {
+    id: string;
+    name: string;
+    department_id?: string;
+  }
+  
+  interface DepartmentListItem {
+    id: string;
+    name: string;
+  }
+  
+  const [users, setUsers] = useState<UserListItem[]>([]);
+  const [departments, setDepartments] = useState<DepartmentListItem[]>([]);
   const [statistics, setStatistics] = useState({
     total: 0,
     in_progress: 0,
@@ -312,7 +325,6 @@ const KeyWorkManagement: React.FC = () => {
 
       setKeyWorks(formattedData);
     } catch (error) {
-      console.error('获取重点工作失败:', error);
       message.error('获取重点工作失败');
     } finally {
       setLoading(false);
@@ -329,7 +341,7 @@ const KeyWorkManagement: React.FC = () => {
       if (error) throw error;
       setUsers(data || []);
     } catch (error) {
-      console.error('获取用户列表失败:', error);
+      // 静默失败，不影响主流程
     }
   };
 
@@ -344,7 +356,7 @@ const KeyWorkManagement: React.FC = () => {
       if (error) throw error;
       setDepartments(data || []);
     } catch (error) {
-      console.error('获取部门列表失败:', error);
+      // 静默失败，不影响主流程
     }
   };
 
@@ -367,30 +379,14 @@ const KeyWorkManagement: React.FC = () => {
 
       setStatistics(stats);
     } catch (error) {
-      console.error('获取统计数据失败:', error);
+      // 静默失败，不影响主流程
     }
   };
 
-  // UUID格式验证函数
-  const isValidUUID = (uuid: string): boolean => {
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-    return uuidRegex.test(uuid);
-  };
-
-  // 生成UUID函数
-  const generateUUID = (): string => {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-      const r = Math.random() * 16 | 0;
-      const v = c === 'x' ? r : (r & 0x3 | 0x8);
-      return v.toString(16);
-    });
-  };
 
   // 创建或更新重点工作
   const handleSubmit = async (values: any) => {
     try {
-      console.log('提交的表单数据:', values);
-      console.log('当前用户:', user);
 
       // 验证必填字段
       if (!values.work_title?.trim()) {
@@ -417,12 +413,9 @@ const KeyWorkManagement: React.FC = () => {
       // 验证用户ID格式并处理临时用户ID
       let validUserId = user.id;
       if (!isValidUUID(user.id)) {
-        console.warn('用户ID不是有效的UUID格式:', user.id);
-        
         // 如果是临时用户ID，生成一个新的UUID
         if (user.id === 'temp-user-id' || user.id.startsWith('temp-')) {
           validUserId = generateUUID();
-          console.log('为临时用户生成新的UUID:', validUserId);
           
           // 更新用户存储中的ID
           const updatedUser = { ...user, id: validUserId };
@@ -436,7 +429,6 @@ const KeyWorkManagement: React.FC = () => {
       }
 
       // 验证用户ID是否在数据库中存在
-      console.log('验证用户ID是否存在:', validUserId);
       const { data: userExists, error: userCheckError } = await supabase
         .from('users')
         .select('id')
@@ -444,20 +436,17 @@ const KeyWorkManagement: React.FC = () => {
         .single();
 
       if (userCheckError && userCheckError.code !== 'PGRST116') {
-        console.error('检查用户存在性时出错:', userCheckError);
         message.error('验证用户信息时出错，请重试');
         return;
       }
 
       if (!userExists) {
-        console.error('用户ID在数据库中不存在:', validUserId);
         message.error('用户信息不存在，请重新登录');
         return;
       }
 
       // 验证部门ID是否有效（如果提供了部门ID）
       if (values.department_id) {
-        console.log('验证部门ID是否存在且有效:', values.department_id);
         const { data: departmentExists, error: deptCheckError } = await supabase
           .from('departments')
           .select('id, name, is_active')
@@ -466,18 +455,14 @@ const KeyWorkManagement: React.FC = () => {
           .single();
 
         if (deptCheckError && deptCheckError.code !== 'PGRST116') {
-          console.error('检查部门存在性时出错:', deptCheckError);
           message.error('验证部门信息时出错，请重试');
           return;
         }
 
         if (!departmentExists) {
-          console.error('部门ID不存在或已停用:', values.department_id);
           message.error('所选部门不存在或已停用，请重新选择');
           return;
         }
-
-        console.log('部门验证通过:', departmentExists);
       }
 
       // 构建工作数据，确保字段名与数据库表一致
@@ -494,8 +479,6 @@ const KeyWorkManagement: React.FC = () => {
         created_by: validUserId, // 使用验证过的UUID
         completion_rate: 0 // 新建时默认完成率为0
       };
-
-      console.log('准备提交的工作数据:', workData);
 
       let result;
       if (editingWork) {
@@ -517,10 +500,7 @@ const KeyWorkManagement: React.FC = () => {
           .select();
       }
 
-      console.log('数据库操作结果:', result);
-
       if (result.error) {
-        console.error('数据库错误详情:', result.error);
         throw result.error;
       }
 
@@ -539,7 +519,7 @@ const KeyWorkManagement: React.FC = () => {
             .eq('key_work_id', workId);
 
           if (deleteError) {
-            console.error('删除原有参与人员失败:', deleteError);
+            // 忽略删除错误，继续执行
           }
         }
 
@@ -559,7 +539,6 @@ const KeyWorkManagement: React.FC = () => {
 
         for (const participant of participantsInput) {
           if (participant.user_id) {
-            console.log('验证参与人员用户ID:', participant.user_id);
             const { data: participantUserExists, error: participantUserCheckError } = await supabase
               .from('users')
               .select('id, name')
@@ -567,13 +546,11 @@ const KeyWorkManagement: React.FC = () => {
               .single();
 
             if (participantUserCheckError && participantUserCheckError.code !== 'PGRST116') {
-              console.error('检查参与人员用户存在性时出错:', participantUserCheckError);
               message.error(`验证参与人员信息时出错，请重试`);
               return;
             }
 
             if (!participantUserExists) {
-              console.error('参与人员用户ID不存在:', participant.user_id);
               message.error(`参与人员用户不存在，请重新选择`);
               return;
             }
@@ -590,14 +567,11 @@ const KeyWorkManagement: React.FC = () => {
           is_active: true
         }));
 
-        console.log('准备添加的参与人员数据:', participantData);
-
         const { error: participantError } = await supabase
           .from('key_work_participants')
           .insert(participantData);
 
         if (participantError) {
-          console.error('添加参与人员失败:', participantError);
           message.warning('重点工作创建成功，但添加参与人员时出现问题');
         }
       }
@@ -608,8 +582,6 @@ const KeyWorkManagement: React.FC = () => {
       form.resetFields();
       fetchKeyWorks();
     } catch (error: any) {
-      console.error('操作失败详情:', error);
-      
       // 提供更详细的错误信息
       let errorMessage = '操作失败';
       if (error?.message) {
@@ -650,7 +622,6 @@ const KeyWorkManagement: React.FC = () => {
         }
       }
       
-      console.error('最终错误信息:', errorMessage);
       message.error(errorMessage);
     }
   };
@@ -668,7 +639,6 @@ const KeyWorkManagement: React.FC = () => {
       message.success('删除成功');
       fetchKeyWorks();
     } catch (error) {
-      console.error('删除失败:', error);
       message.error('删除失败');
     }
   };
@@ -692,7 +662,6 @@ const KeyWorkManagement: React.FC = () => {
       message.success('状态更新成功');
       fetchKeyWorks();
     } catch (error) {
-      console.error('状态更新失败:', error);
       message.error('状态更新失败');
     }
   };
@@ -744,7 +713,6 @@ const KeyWorkManagement: React.FC = () => {
       evaluationForm.resetFields();
       fetchKeyWorks();
     } catch (error) {
-      console.error('评价提交失败:', error);
       message.error('评价提交失败');
     }
   };
@@ -801,15 +769,7 @@ const KeyWorkManagement: React.FC = () => {
         );
       },
     },
-    {
-      title: '完成进度',
-      dataIndex: 'completion_rate',
-      key: 'completion_rate',
-      width: 120,
-      render: (rate: number) => (
-        <Progress percent={typeof rate === 'number' ? rate : 0} size="small" />
-      ),
-    },
+
     {
       title: '拟奖励重点分',
       dataIndex: 'total_score',
@@ -824,6 +784,26 @@ const KeyWorkManagement: React.FC = () => {
       dataIndex: 'creator_name',
       key: 'creator_name',
       width: 100,
+    },
+    {
+      title: '参与人员',
+      key: 'participants',
+      width: 200,
+      render: (_, record) => {
+        const participants = record.participants || [];
+        return (
+          <div className="flex flex-wrap gap-1">
+            {participants.slice(0, 3).map(p => (
+              <Tag key={p.id} color="green">
+                {p.user_name || '未知用户'}({roleMap[p.role as keyof typeof roleMap]})
+              </Tag>
+            ))}
+            {participants.length > 3 && (
+              <Tag color="default">+{participants.length - 3}</Tag>
+            )}
+          </div>
+        );
+      },
     },
     {
       title: '开始日期',
@@ -1043,7 +1023,6 @@ const KeyWorkManagement: React.FC = () => {
             // 这里直接重新获取列表
             setActiveTab(activeTab);
           } catch (err) {
-            console.error('填报失败:', err);
             message.error('填报失败');
           }
         }}
@@ -1193,18 +1172,18 @@ const KeyWorkManagement: React.FC = () => {
             </Col>
             <Col span={8}>
               <Form.Item
-                name="total_score"
-                label="拟奖励重点积分"
-                rules={[{ required: true, message: '请输入拟奖励重点积分' }]}
-              >
-                <InputNumber
-                  min={0}
-                  max={20}
-                  step={0.5}
-                  placeholder="拟奖励重点积分"
-                  className="w-full"
-                />
-              </Form.Item>
+            name="total_score"
+            label="拟奖励重点积分"
+            rules={[{ required: true, message: '请输入拟奖励重点积分' }]}
+          >
+            <InputNumber
+              min={0}
+              max={20}
+              step={0.5}
+              placeholder="拟奖励重点积分"
+              className="w-full"
+            />
+          </Form.Item>
             </Col>
           </Row>
 
@@ -1240,6 +1219,30 @@ const KeyWorkManagement: React.FC = () => {
             <TextArea rows={4} placeholder="请输入工作描述" />
           </Form.Item>
 
+          <Form.Item noStyle shouldUpdate={(prev, curr) => {
+            const totalChanged = prev.total_score !== curr.total_score;
+            const participantsChanged = JSON.stringify(prev.participants) !== JSON.stringify(curr.participants);
+            return totalChanged || participantsChanged;
+          }}>
+            {() => {
+              const total = Number(form.getFieldValue('total_score')) || 0;
+              const participants = form.getFieldValue('participants') || [];
+              
+              // 自动计算并更新所有参与人员的积分
+              if (total > 0 && participants.length > 0) {
+                participants.forEach((participant: any, index: number) => {
+                  if (participant && participant.role && (participant.individual_score === undefined || participant.individual_score === null)) {
+                    const weight = roleWeights[participant.role as keyof typeof roleWeights] ?? 0.6;
+                    const calculatedScore = Math.max(0, Number((total * weight).toFixed(1)));
+                    form.setFieldValue(['participants', index, 'individual_score'], calculatedScore);
+                  }
+                });
+              }
+              
+              return null;
+            }}
+          </Form.Item>
+          
           <Form.List name="participants">
             {(fields, { add, remove }) => (
               <>
@@ -1270,7 +1273,18 @@ const KeyWorkManagement: React.FC = () => {
                         name={[name, 'role']}
                         rules={[{ required: true, message: '请选择角色' }]}
                       >
-                        <Select placeholder="选择角色">
+                        <Select 
+                          placeholder="选择角色"
+                          onChange={(value) => {
+                            // 当角色变化时，自动重新计算该参与人员的积分
+                            const total = Number(form.getFieldValue('total_score')) || 0;
+                            if (total > 0 && value) {
+                              const weight = roleWeights[value as keyof typeof roleWeights] ?? 0.6;
+                              const calculatedScore = Math.max(0, Number((total * weight).toFixed(1)));
+                              form.setFieldValue(['participants', name, 'individual_score'], calculatedScore);
+                            }
+                          }}
+                        >
                           {Object.entries(roleMap).map(([key, value]) => (
                             <Option key={key} value={key}>{value}</Option>
                           ))}
@@ -1278,27 +1292,54 @@ const KeyWorkManagement: React.FC = () => {
                       </Form.Item>
                     </Col>
                     <Col span={8}>
-                      <Form.Item noStyle shouldUpdate={(prev, curr) => prev.total_score !== curr.total_score || prev.participants !== curr.participants}>
+                      <Form.Item noStyle shouldUpdate={(prev, curr) => {
+                        const totalChanged = prev.total_score !== curr.total_score;
+                        const roleChanged = prev.participants?.[name]?.role !== curr.participants?.[name]?.role;
+                        const participantsChanged = prev.participants !== curr.participants;
+                        return totalChanged || roleChanged || participantsChanged;
+                      }}>
                         {() => {
                           const total = Number(form.getFieldValue('total_score')) || 0;
                           const currentRole = form.getFieldValue(['participants', name, 'role']);
                           const weight = roleWeights[currentRole as keyof typeof roleWeights] ?? 0.6;
                           const maxSelectable = Math.max(0, Number((total * weight).toFixed(1)));
-                          const options: number[] = [];
-                          for (let v = 0; v <= maxSelectable; v = Number((v + 0.5).toFixed(1))) {
-                            options.push(Number(v.toFixed(1)));
-                          }
+                          
                           return (
                             <Form.Item
                               {...restField}
                               name={[name, 'individual_score']}
-                              rules={[{ required: true, message: '请选择个人拟奖励积分' }]}
+                              rules={[
+                                { required: true, message: '请输入个人拟奖励积分' },
+                                { type: 'number', min: 0, max: maxSelectable, message: `积分必须在0到${maxSelectable}之间` }
+                              ]}
                             >
-                              <Select placeholder="选择个人拟奖励积分">
-                                {options.map(val => (
-                                  <Option key={val} value={val}>{val}分</Option>
-                                ))}
-                              </Select>
+                              <InputNumber
+                                min={0}
+                                max={maxSelectable}
+                                step={0.5}
+                                placeholder="输入个人拟奖励积分"
+                                className="w-full"
+                                formatter={(value) => `${value}分`}
+                                parser={(value) => Number(value?.replace('分', '') || 0)}
+                                onChange={(value) => {
+                                  // 验证所有参与人员的积分总和不超过总积分
+                                  const participants = form.getFieldValue('participants') || [];
+                                  const updatedParticipants = [...participants];
+                                  updatedParticipants[name] = {
+                                    ...updatedParticipants[name],
+                                    individual_score: value
+                                  };
+                                  
+                                  const totalScore = Number(form.getFieldValue('total_score')) || 0;
+                                  const sumIndividualScores = updatedParticipants.reduce((sum, p) => {
+                                    return sum + (Number(p?.individual_score) || 0);
+                                  }, 0);
+                                  
+                                  if (sumIndividualScores > totalScore) {
+                                    message.warning(`所有参与人员的积分总和不能超过拟奖励重点积分(${totalScore}分)`);
+                                  }
+                                }}
+                              />
                             </Form.Item>
                           );
                         }}
@@ -1359,9 +1400,7 @@ const KeyWorkManagement: React.FC = () => {
                 </Tag>
               </Descriptions.Item>
               <Descriptions.Item label="拟奖励重点积分">{selectedWork.total_score}</Descriptions.Item>
-              <Descriptions.Item label="完成进度">
-                <Progress percent={selectedWork.completion_rate} />
-              </Descriptions.Item>
+
               <Descriptions.Item span={2} label="工作描述">
                 <div className="p-3 bg-gray-50 rounded">{selectedWork.work_description}</div>
               </Descriptions.Item>
